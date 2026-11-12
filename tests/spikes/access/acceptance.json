@@ -1,0 +1,29 @@
+{
+  "task": "IP-03-partial-client-payer",
+  "profile": "local-mailpit-channel-verification",
+  "observedDate": "2026-11-12",
+  "result": {
+    "realSmtpCodeDelivered": true,
+    "codeVerified": true,
+    "role": "client-approver",
+    "sessionSurvivedReload": true,
+    "plainCodeStored": false,
+    "recipientStoredInSession": false
+  },
+  "evidence": [
+    "A same-origin browser request issued a short-lived client-approver challenge",
+    "Mailpit captured the six-digit verification message",
+    "The submitted code consumed the challenge once",
+    "The resulting HttpOnly signed session survived page reload",
+    "The verified UI explicitly separated channel control from legal/commercial authority"
+  ],
+  "notProved": [
+    "Real external recipient ownership",
+    "Transactional email internet delivery",
+    "Legal authority to approve for a client",
+    "Multiple-browser revocation and recovery",
+    "Public multi-instance durable challenge storage",
+    "Production rate limiting and abuse controls"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

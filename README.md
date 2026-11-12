@@ -220,6 +220,8 @@ This proves local email composition and SMTP handoff, not internet delivery, sen
 
 One real local SMTP delivery has been captured in Mailpit using a six-digit client verification message. The sanitized [partial acceptance manifest](tests/spikes/email/acceptance.json) records no code or recipient identity beyond the reserved `scopeledger.test` fixture.
 
+The `/access-demo` journey now issues short-lived client-approver or payer codes, verifies them through same-origin APIs, and stores a 30-minute HttpOnly signed role session without the recipient address. The real local client flow survived reload; its [partial acceptance manifest](tests/spikes/access/acceptance.json) still distinguishes channel control from authority, consent and payment permission.
+
 An authenticated sandbox login has completed through Universal Login, OTP and the protected provider route. The SDK session hook persisted only the approved assurance claims, and the page continued to separate authenticated identity from server-side product grants. The sanitized [partial acceptance manifest](tests/spikes/auth0/acceptance.json) omits all identity values, tokens and credentials.
 
 Private planning records remain the authority for unreleased product policy. This public UI and its local proofs do not establish production readiness or launch permission.

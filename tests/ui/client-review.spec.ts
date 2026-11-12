@@ -4,6 +4,61 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("verifies a local client channel without implying authority", async ({
+  page,
+}) => {
+  await page.route("**/api/access/session", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ verified: false }),
+      });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ verified: false }),
+      });
+    }
+  });
+  await page.route("**/api/access/request", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        challengeId: "11111111-1111-4111-8111-111111111111",
+        expiresAt: "2026-11-11T12:10:00Z",
+        inboxUrl: "http://127.0.0.1:8025",
+      }),
+    });
+  });
+  await page.route("**/api/access/verify", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        verified: true,
+        role: "client-approver",
+        expiresAt: "2026-11-11T12:30:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/access-demo");
+  await page.getByRole("button", {
+    name: "Send local verification code",
+  }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Verification code sent",
+  );
+  await page.getByRole("textbox", { name: "Six-digit code" }).fill("123456");
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(page.getByText("Local channel verified: client-approver")).toBeVisible();
+  await expect(page.getByText("does not prove legal authority")).toBeVisible();
+  await expect(page.getByText("authorize money")).toBeVisible();
+});
+
 test("keeps provider access disabled until Auth0 is configured", async ({
   page,
 }) => {
