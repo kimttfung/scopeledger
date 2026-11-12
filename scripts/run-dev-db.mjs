@@ -9,6 +9,17 @@ const containerName = "scopeledger-dev-postgres";
 const volumeName = "scopeledger-dev-postgres-data";
 const owner = "scopeledger";
 
+export const DEV_POSTGRES_RUNTIME = Object.freeze({
+  image,
+  containerName,
+  volumeName,
+  owner,
+  ownerLabel: "scopeledger.dev.owner",
+  host: "127.0.0.1",
+  hostPort: 5433,
+  containerPort: 5432,
+});
+
 async function docker(args, options = {}) {
   return execute("docker", args, {
     encoding: "utf8",
@@ -43,6 +54,10 @@ export function devPostgresContainerArgs() {
     "-c",
     "synchronous_commit=on",
   ];
+}
+
+export function devPostgresStopArgs() {
+  return ["rm", "--force", containerName];
 }
 
 async function inspectContainerOwner() {
@@ -187,7 +202,7 @@ async function stop() {
   if (currentOwner !== owner) {
     throw new Error("Refusing to stop a development container not owned by ScopeLedger");
   }
-  await docker(["rm", "--force", "--volumes", containerName]);
+  await docker(devPostgresStopArgs());
   console.log("Stopped only the owned container; persistent database volume was retained");
 }
 

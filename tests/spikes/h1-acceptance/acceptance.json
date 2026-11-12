@@ -1,0 +1,411 @@
+{
+  "schemaVersion": "scopeledger.h1-acceptance.v1",
+  "task": "h1-judging-acceptance",
+  "profile": "verified-local-reproducible-h1",
+  "latestMigration": 9,
+  "latestObserved": {
+    "date": "2026-11-12",
+    "mode": "full",
+    "commands": 52,
+    "tests": 556,
+    "passed": 556,
+    "failed": 0,
+    "skipped": 0,
+    "externalProviderWrites": false,
+    "financialEffects": false,
+    "externalEmailDelivery": false
+  },
+  "privatePaths": [
+    "guides",
+    "PRODUCT.md",
+    "DECISIONS.md",
+    "DESIGN.md",
+    ".env.local",
+    ".scopeledger-local"
+  ],
+  "localRoutes": [
+    "/",
+    "/access-demo"
+  ],
+  "quickCommands": [
+    {
+      "id": "package-build",
+      "label": "Package and production web build",
+      "file": "npm",
+      "args": ["run", "build"],
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "typecheck",
+      "label": "Repository typecheck",
+      "file": "npm",
+      "args": ["run", "typecheck"],
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "lint",
+      "label": "Repository lint",
+      "file": "npm",
+      "args": ["run", "lint"],
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "ordered-consent",
+      "label": "Ordered-consent PostgreSQL protocol",
+      "file": "npm",
+      "args": ["run", "test:ip01"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/ordered-consent/acceptance.json"
+    },
+    {
+      "id": "authoring-foundation",
+      "label": "H1 authoring foundation",
+      "file": "npm",
+      "args": ["run", "test:h1-authoring-foundation"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/h1-authoring-foundation/acceptance.json"
+    },
+    {
+      "id": "publication-foundation",
+      "label": "H1 publication foundation",
+      "file": "npm",
+      "args": ["run", "test:publication-foundation"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/publication-foundation/acceptance.json"
+    },
+    {
+      "id": "evaluator-controls",
+      "label": "Evaluator budgets and controls",
+      "file": "npm",
+      "args": ["run", "test:evaluator-controls"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/evaluator-controls/acceptance.json"
+    }
+  ],
+  "fullCommands": [
+    {
+      "id": "analysis-core",
+      "label": "Local analysis contracts",
+      "file": "npm",
+      "args": ["run", "test:analysis"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/analysis-pipeline/acceptance.json"
+    },
+    {
+      "id": "analysis-ui",
+      "label": "Protected analysis services",
+      "file": "npm",
+      "args": ["run", "test:analysis-ui"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/analysis-ui/acceptance.json"
+    },
+    {
+      "id": "analysis-persistence",
+      "label": "Analysis persistence",
+      "file": "npm",
+      "args": ["run", "test:analysis-persistence"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/analysis-persistence/acceptance.json"
+    },
+    {
+      "id": "parser",
+      "label": "Bounded PDF parser",
+      "file": "npm",
+      "args": ["run", "test:parser:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/parser/acceptance.json"
+    },
+    {
+      "id": "object-storage",
+      "label": "Private object storage",
+      "file": "npm",
+      "args": ["run", "test:object-storage"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/object-storage/acceptance.json"
+    },
+    {
+      "id": "gemini-contract",
+      "label": "Gemini adapter contract fakes",
+      "file": "npm",
+      "args": ["run", "test:gemini:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/gemini/acceptance.json"
+    },
+    {
+      "id": "source-analysis",
+      "label": "Admitted-source analysis",
+      "file": "npm",
+      "args": ["run", "test:provider-source-analysis"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-source-analysis/acceptance.json"
+    },
+    {
+      "id": "source-intake",
+      "label": "Provider source intake",
+      "file": "npm",
+      "args": ["run", "test:provider-source-intake"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-source-intake/acceptance.json"
+    },
+    {
+      "id": "provider-authoring",
+      "label": "Provider authoring",
+      "file": "npm",
+      "args": ["run", "test:provider-authoring"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-authoring/acceptance.json"
+    },
+    {
+      "id": "provider-publication",
+      "label": "Provider commercial publication",
+      "file": "npm",
+      "args": ["run", "test:provider-publication"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-publication/acceptance.json"
+    },
+    {
+      "id": "provider-participants",
+      "label": "Provider participant lifecycle",
+      "file": "npm",
+      "args": ["run", "test:provider-participants"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-participants/acceptance.json"
+    },
+    {
+      "id": "dynamic-client-review",
+      "label": "Dynamic client review",
+      "file": "npm",
+      "args": ["run", "test:dynamic-client-review"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/dynamic-client-review/acceptance.json"
+    },
+    {
+      "id": "client-decision",
+      "label": "Exact client decision",
+      "file": "npm",
+      "args": ["run", "test:client-decision"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/client-decision/acceptance.json"
+    },
+    {
+      "id": "client-submissions",
+      "label": "Client questions and corrections",
+      "file": "npm",
+      "args": ["run", "test:client-submissions"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/client-submissions/acceptance.json"
+    },
+    {
+      "id": "paypal-contract",
+      "label": "PayPal adapter contract fakes",
+      "file": "npm",
+      "args": ["run", "test:paypal:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/paypal/acceptance.json"
+    },
+    {
+      "id": "custom-payment",
+      "label": "Custom payment contracts",
+      "file": "npm",
+      "args": ["run", "test:custom-payment"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/custom-payment/acceptance.json"
+    },
+    {
+      "id": "payment-ui",
+      "label": "Payer journey services",
+      "file": "npm",
+      "args": ["run", "test:payment-ui"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/payment-ui/acceptance.json"
+    },
+    {
+      "id": "payment-recovery",
+      "label": "Payment recovery",
+      "file": "npm",
+      "args": ["run", "test:payment-recovery"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/payment-recovery/acceptance.json"
+    },
+    {
+      "id": "payment-worker",
+      "label": "Payment worker contracts",
+      "file": "npm",
+      "args": ["run", "test:payment-worker"],
+      "kind": "test",
+      "required": true
+    },
+    {
+      "id": "webhook-worker",
+      "label": "Webhook worker contracts",
+      "file": "npm",
+      "args": ["run", "test:webhook-worker"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/webhook-worker/acceptance.json"
+    },
+    {
+      "id": "client-drafts",
+      "label": "Private client drafts",
+      "file": "npm",
+      "args": ["run", "test:client-drafts"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/client-drafts/acceptance.json"
+    },
+    {
+      "id": "participant-lifecycle",
+      "label": "Participant revoke and restore",
+      "file": "npm",
+      "args": ["run", "test:participant-lifecycle"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/participant-lifecycle/acceptance.json"
+    },
+    {
+      "id": "correction-reissue",
+      "label": "Correction reissue",
+      "file": "npm",
+      "args": ["run", "test:correction-reissue"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/correction-reissue/acceptance.json"
+    },
+    {
+      "id": "payment-exceptions",
+      "label": "Payment exception handling",
+      "file": "npm",
+      "args": ["run", "test:payment-exceptions"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/payment-exceptions/acceptance.json"
+    },
+    {
+      "id": "provider-reconciliation",
+      "label": "Provider reconciliation",
+      "file": "npm",
+      "args": ["run", "test:provider-reconciliation"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-reconciliation/acceptance.json"
+    },
+    {
+      "id": "work-start",
+      "label": "Separate work authorization",
+      "file": "npm",
+      "args": ["run", "test:work-start"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/work-start/acceptance.json"
+    },
+    {
+      "id": "access",
+      "label": "Scoped local access",
+      "file": "npm",
+      "args": ["run", "test:access:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/access/acceptance.json"
+    },
+    {
+      "id": "auth0-contract",
+      "label": "Auth0 assurance contracts",
+      "file": "npm",
+      "args": ["run", "test:auth0:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/auth0/acceptance.json"
+    },
+    {
+      "id": "email",
+      "label": "Local email adapter",
+      "file": "npm",
+      "args": ["run", "test:email:local"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/email/acceptance.json"
+    },
+    {
+      "id": "notifications",
+      "label": "Notification outbox",
+      "file": "npm",
+      "args": ["run", "test:notifications"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/notifications/acceptance.json"
+    },
+    {
+      "id": "financial-audit",
+      "label": "Financial audit controls",
+      "file": "npm",
+      "args": ["run", "test:financial-audit"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/financial-audit/acceptance.json"
+    },
+    {
+      "id": "provider-records",
+      "label": "Provider records surface",
+      "file": "npm",
+      "args": ["run", "test:provider-records"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/provider-records/acceptance.json"
+    },
+    {
+      "id": "records-export",
+      "label": "Records export protocol",
+      "file": "npm",
+      "args": ["run", "test:records-export"],
+      "kind": "test",
+      "required": true,
+      "evidenceManifest": "tests/spikes/records-export/acceptance.json"
+    }
+  ],
+  "inventory": {
+    "implemented": [
+      "Sequential PostgreSQL migrations and ordered-consent protocol",
+      "Provider source intake, authoring, publication and participant activation",
+      "Dynamic exact-version client review, corrections and decisions",
+      "Local PayPal contract fakes, payment worker and recovery controls",
+      "Bounded parsing, analysis candidates and human-review gates",
+      "Private drafts, correction reissue and payment exception handling",
+      "Mailpit notifications, evaluator budgets, records and financial audit controls",
+      "Conditional isolated production browser validation"
+    ],
+    "unavailable": [
+      "Automatic real PayPal create, capture or refund",
+      "Automatic Auth0 login or MFA ceremony",
+      "Automatic Gemini provider call",
+      "External email delivery",
+      "Deployed webhook ingress, high availability and production restore proof",
+      "Production legal, semantic or financial suitability certification"
+    ]
+  },
+  "containsPrivateRecordsOrCredentials": false
+}

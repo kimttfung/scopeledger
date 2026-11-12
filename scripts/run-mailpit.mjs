@@ -8,6 +8,18 @@ const image = "axllent/mailpit:v1.27.4@sha256:df6c2541907e1be6fac21f509927cf6ed7
 const name = "scopeledger-mailpit";
 const label = "scopeledger.mailpit.owner=scopeledger";
 
+export const MAILPIT_RUNTIME = Object.freeze({
+  image,
+  containerName: name,
+  owner: "scopeledger",
+  ownerLabel: "scopeledger.mailpit.owner",
+  host: "127.0.0.1",
+  smtpHostPort: 1025,
+  smtpContainerPort: 1025,
+  apiHostPort: 8025,
+  apiContainerPort: 8025,
+});
+
 async function docker(args) {
   return execute("docker", args, {
     encoding: "utf8",
@@ -35,6 +47,10 @@ export function mailpitContainerArgs() {
     "MP_DATABASE=/tmp/mailpit.db",
     image,
   ];
+}
+
+export function mailpitStopArgs() {
+  return ["rm", "--force", name];
 }
 
 async function ownership() {
@@ -103,7 +119,7 @@ async function stop() {
   if (owner !== "scopeledger") {
     throw new Error("Refusing to stop a Mailpit container not owned by ScopeLedger");
   }
-  await docker(["rm", "--force", "--volumes", name]);
+  await docker(mailpitStopArgs());
   console.log("Stopped only the owned ScopeLedger Mailpit container");
 }
 

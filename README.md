@@ -1,5 +1,17 @@
 # ScopeLedger
 
+For the local/reproducible H1 judging workflow, see [JUDGING.md](JUDGING.md).
+
+```sh
+npm run h1:prepare
+npm run h1:start
+npm run dev
+npm run h1:doctor
+npm run h1:acceptance:full
+```
+
+The latest observed local full acceptance completed **52 commands and 556 tests with zero failures or skips** without automatic provider writes, financial effects, or external email delivery.
+
 The client-facing implementation is a **synthetic client-review UI prototype**, not the H1 application. It follows the selected Studio Standards composition B, with a compact comparison of the superseded and current proposals. Backend proof workspaces are separate from that UI; installing them does not activate approval, identity, model, or payment capabilities.
 
 ## Product framing

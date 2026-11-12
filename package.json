@@ -9,6 +9,13 @@
   ],
   "scripts": {
     "dev": "npm run build:paypal && node scripts/prepare-web-env.mjs && npm run dev --workspace @scopeledger/web -- --hostname 127.0.0.1",
+    "h1:prepare": "node scripts/h1-local.mjs prepare",
+    "h1:start": "node scripts/h1-local.mjs start",
+    "h1:status": "node scripts/h1-local.mjs status",
+    "h1:doctor": "node scripts/h1-local.mjs doctor",
+    "h1:stop": "node scripts/h1-local.mjs stop",
+    "h1:acceptance:quick": "node scripts/run-h1-acceptance.mjs --quick",
+    "h1:acceptance:full": "node scripts/run-h1-acceptance.mjs --full",
     "build": "npm run build:packages && npm run build --workspace @scopeledger/web",
     "build:packages": "tsc --build packages/contracts packages/db packages/domain packages/analysis packages/access packages/adapters/paypal packages/adapters/gemini packages/adapters/email packages/adapters/parser packages/adapters/object-storage packages/payment-worker packages/records-export packages/notifications",
     "build:protocol": "tsc --build packages/contracts packages/db packages/domain",
@@ -32,6 +39,9 @@
     "check:ip01-runtime": "node scripts/run-ip01.mjs --check-runtime",
     "check:paypal-config": "npm run build:paypal && node --env-file=.env.local scripts/check-paypal-config.mjs",
     "check:paypal-auth": "npm run build:paypal && node --env-file=.env.local scripts/check-paypal-auth.mjs",
+    "check:paypal-webhook": "npm run build:paypal && node --env-file=.env.local scripts/check-paypal-webhook.mjs --tunnel",
+    "paypal:webhook:tunnel": "node scripts/run-paypal-webhook-tunnel.mjs --port 3000",
+    "paypal:webhook:manage": "npm run build:paypal && node --env-file=.env.local scripts/manage-paypal-sandbox-webhook.mjs",
     "check:gemini-config": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-config.mjs",
     "check:gemini-auth": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-auth.mjs",
     "check:auth0-config": "node --env-file=.env.local scripts/check-auth0-config.mjs",
@@ -76,6 +86,8 @@
     "test:analysis-ui": "tsx --test tests/spikes/analysis-ui/*.test.ts",
     "test:analysis-persistence": "npm run build:protocol && node scripts/run-ip01.mjs --suite=analysis-persistence",
     "test:h1-authoring-foundation": "npm run build:protocol && node scripts/run-ip01.mjs --suite=h1-authoring-foundation",
+    "test:h1-local-ops": "node --test tests/spikes/h1-local-ops/*.test.mjs",
+    "test:h1-acceptance": "node --test tests/spikes/h1-acceptance/*.test.mjs",
     "test:publication-foundation": "npm run build:protocol && node scripts/run-ip01.mjs --suite=publication-foundation",
     "test:payment-ui": "tsx --test tests/spikes/payment-ui/*.test.ts",
     "test:payment-recovery": "tsx --test tests/spikes/payment-recovery/*.test.ts",
@@ -98,7 +110,8 @@
     "test:client-drafts": "node --env-file-if-exists=.env.local --import tsx --test --test-concurrency=1 tests/spikes/client-drafts/*.test.ts tests/spikes/client-drafts/*.test.tsx",
     "test:records-export": "npm run build:records-export && node scripts/run-ip01.mjs --suite=records-export",
     "test:payment-worker": "npm run build:payment-worker && tsx --test tests/spikes/payment-worker/*.test.ts",
-    "test:webhook-worker": "npm run build:payment-worker && tsx --test tests/spikes/webhook-worker/*.test.ts"
+    "test:webhook-worker": "npm run build:payment-worker && tsx --test tests/spikes/webhook-worker/*.test.ts",
+    "test:webhook-tooling": "node --test tests/spikes/webhook-tooling/*.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",

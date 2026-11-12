@@ -89,10 +89,24 @@ async function questionNotification(
   return row.id;
 }
 
+async function notificationAvailableAt(
+  proof: Awaited<ReturnType<typeof fixture>>,
+  notificationId: string,
+): Promise<Date> {
+  const row = (await sql<{ available_at: Date }>`select available_at
+    from notification_outbox
+    where id = ${notificationId}::uuid`
+    .execute(proof.database.kysely)).rows[0];
+  assert.ok(row);
+  return row.available_at;
+}
+
 test("expired lease recovers a captured SMTP message without resending", async (t) => {
   const proof = await fixture(t);
   const notificationId = await questionNotification(proof);
-  let now = new Date("2026-11-12T17:00:00.000Z");
+  let now = new Date(
+    (await notificationAvailableAt(proof, notificationId)).getTime() + 1,
+  );
   const outbox = new PostgresNotificationOutboxStore(
     proof.database,
     () => new Date(now),
@@ -257,7 +271,9 @@ test("payer notices recheck collectible obligation before dispatch", async (t) =
 test("delivery failures use bounded backoff and end in manual state only", async (t) => {
   const proof = await fixture(t);
   const notificationId = await questionNotification(proof);
-  let now = new Date("2026-11-12T18:00:00.000Z");
+  let now = new Date(
+    (await notificationAvailableAt(proof, notificationId)).getTime() + 1,
+  );
   const outbox = new PostgresNotificationOutboxStore(
     proof.database,
     () => new Date(now),

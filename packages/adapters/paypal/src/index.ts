@@ -90,6 +90,42 @@ export function parsePayPalConfig(input: unknown): PayPalConfig {
   return parsed.data;
 }
 
+const payPalSandboxManagementConfigSchema = z.strictObject({
+  environment: z.literal("sandbox"),
+  clientId: secretSchema,
+  clientSecret: secretSchema,
+  timeoutMilliseconds: z.number().int().min(1_000).max(60_000).default(15_000),
+});
+
+export type PayPalSandboxManagementConfig = z.infer<
+  typeof payPalSandboxManagementConfigSchema
+>;
+
+export function parsePayPalSandboxManagementConfig(
+  input: unknown,
+): PayPalSandboxManagementConfig {
+  const parsed = payPalSandboxManagementConfigSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new PayPalAdapterError(
+      "INVALID_CONFIG",
+      `PayPal sandbox webhook-management configuration is invalid: ${parsed.error.issues.map((issue) => issue.path.join(".") || "$").join(", ")}`,
+    );
+  }
+  return parsed.data;
+}
+
+export function payPalSandboxManagementConfigFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+): PayPalSandboxManagementConfig {
+  const timeout = environment.PAYPAL_TIMEOUT_MS;
+  return parsePayPalSandboxManagementConfig({
+    environment: environment.PAYPAL_ENVIRONMENT,
+    clientId: environment.PAYPAL_CLIENT_ID,
+    clientSecret: environment.PAYPAL_CLIENT_SECRET,
+    ...(timeout ? { timeoutMilliseconds: Number(timeout) } : {}),
+  });
+}
+
 export function payPalConfigFromEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
 ): PayPalConfig {
@@ -293,6 +329,45 @@ const orderResponseSchema = z.looseObject({
 const webhookVerificationResponseSchema = z.looseObject({
   verification_status: z.enum(["SUCCESS", "FAILURE"]),
 });
+
+const webhookManagementEventNameSchema = z.string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Z0-9][A-Z0-9._-]*$/);
+
+const webhookManagementRegistrationResponseSchema = z.looseObject({
+  id: identifier,
+  url: z.url(),
+  event_types: z.array(z.looseObject({
+    name: webhookManagementEventNameSchema,
+  })).min(1).max(500),
+});
+
+const webhookManagementListResponseSchema = z.looseObject({
+  webhooks: z.array(webhookManagementRegistrationResponseSchema).max(500),
+});
+
+const webhookManagementCreateInputSchema = z.strictObject({
+  url: z.url().refine((value) => {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash;
+  }, "Expected an HTTPS webhook URL without credentials, query, or fragment"),
+  eventTypes: z.array(webhookManagementEventNameSchema).min(1).max(32)
+    .refine(
+      (values) => new Set(values).size === values.length,
+      "Webhook event names must be unique",
+    ),
+});
+
+export type PayPalWebhookRegistration = Readonly<{
+  id: string;
+  url: string;
+  eventTypes: readonly string[];
+}>;
 
 const webhookVerificationInputSchema = z.strictObject({
   transmissionId: z.string().min(1).max(512),
@@ -505,6 +580,171 @@ function parseProviderResponse<T>(
 
 function evidenceReference(operationId: string): string {
   return `paypal_${operationId.replaceAll("-", "")}`;
+}
+
+function webhookRegistration(
+  input: z.infer<typeof webhookManagementRegistrationResponseSchema>,
+): PayPalWebhookRegistration {
+  return Object.freeze({
+    id: input.id,
+    url: input.url,
+    eventTypes: Object.freeze(input.event_types.map(({ name }) => name)),
+  });
+}
+
+export class PayPalSandboxWebhookManagementClient {
+  private readonly config: PayPalSandboxManagementConfig;
+  private readonly fetcher: FetchLike;
+  private readonly now: () => number;
+  private token: Token | null = null;
+  private tokenRequest: Promise<string> | null = null;
+
+  constructor(
+    configInput: unknown,
+    options: { fetch?: FetchLike; now?: () => number } = {},
+  ) {
+    this.config = parsePayPalSandboxManagementConfig(configInput);
+    this.fetcher = options.fetch ?? fetch;
+    this.now = options.now ?? Date.now;
+  }
+
+  async listWebhooks(): Promise<readonly PayPalWebhookRegistration[]> {
+    const response = await this.authorizedJson(
+      "GET",
+      "/v1/notifications/webhooks",
+    );
+    const list = parseProviderResponse(
+      webhookManagementListResponseSchema,
+      response.value,
+      response.debugId,
+    );
+    return Object.freeze(list.webhooks.map(webhookRegistration));
+  }
+
+  async createWebhook(input: unknown): Promise<PayPalWebhookRegistration> {
+    const parsed = webhookManagementCreateInputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new PayPalAdapterError(
+        "INVALID_OPERATION",
+        "Webhook registration did not match the reviewed sandbox management contract",
+      );
+    }
+    const response = await this.authorizedJson(
+      "POST",
+      "/v1/notifications/webhooks",
+      {
+        url: parsed.data.url,
+        event_types: parsed.data.eventTypes.map((name) => ({ name })),
+      },
+    );
+    return webhookRegistration(parseProviderResponse(
+      webhookManagementRegistrationResponseSchema,
+      response.value,
+      response.debugId,
+    ));
+  }
+
+  private async accessToken(): Promise<string> {
+    if (this.token && this.token.expiresAt > this.now() + 5_000) {
+      return this.token.value;
+    }
+    if (this.tokenRequest) return this.tokenRequest;
+    const pending = this.fetchAccessToken().finally(() => {
+      this.tokenRequest = null;
+    });
+    this.tokenRequest = pending;
+    return pending;
+  }
+
+  private async fetchAccessToken(): Promise<string> {
+    let response: Response;
+    try {
+      response = await this.fetcher(
+        `${SANDBOX_API_ORIGIN}/v1/oauth2/token`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`, "utf8").toString("base64")}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body: "grant_type=client_credentials",
+          signal: AbortSignal.timeout(this.config.timeoutMilliseconds),
+        },
+      );
+    } catch {
+      throw new PayPalAdapterError(
+        "AUTHENTICATION_FAILED",
+        "PayPal OAuth request did not complete",
+      );
+    }
+    const value = await responseJson(response);
+    if (!response.ok) {
+      throw new PayPalAdapterError(
+        "AUTHENTICATION_FAILED",
+        "PayPal rejected sandbox authentication",
+        response.status,
+        safeDebugId(response),
+      );
+    }
+    const token = parseProviderResponse(
+      tokenResponseSchema,
+      value,
+      safeDebugId(response),
+    );
+    const marginMilliseconds = Math.max(
+      30_000,
+      Math.min(300_000, token.expires_in * 100),
+    );
+    this.token = {
+      value: token.access_token,
+      expiresAt:
+        this.now() + token.expires_in * 1_000 - marginMilliseconds,
+    };
+    return token.access_token;
+  }
+
+  private async authorizedJson(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+    allowAuthenticationRefresh = true,
+  ): Promise<JsonResponse> {
+    const token = await this.accessToken();
+    let response: Response;
+    try {
+      response = await this.fetcher(`${SANDBOX_API_ORIGIN}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          Prefer: "return=representation",
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(this.config.timeoutMilliseconds),
+      });
+    } catch {
+      throw new PayPalAdapterError(
+        "PROVIDER_REJECTED",
+        "PayPal webhook-management request outcome is unknown",
+      );
+    }
+    if (response.status === 401 && allowAuthenticationRefresh) {
+      this.token = null;
+      return this.authorizedJson(method, path, body, false);
+    }
+    const value = await responseJson(response);
+    if (!response.ok) {
+      throw new PayPalAdapterError(
+        "PROVIDER_REJECTED",
+        "PayPal rejected the reviewed sandbox webhook-management request",
+        response.status,
+        safeDebugId(response),
+      );
+    }
+    return { value, debugId: safeDebugId(response) };
+  }
 }
 
 export class PayPalSandboxClient {
