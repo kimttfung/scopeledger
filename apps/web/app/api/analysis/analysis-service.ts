@@ -1,8 +1,18 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+  ANALYSIS_CANDIDATE_SCHEMA_REFERENCE,
+} from "@scopeledger/db";
+import type {
+  AnalysisCandidatePayload,
+  AnalysisRunInput,
+  AnalysisSourceVersionInput,
+} from "@scopeledger/db";
 import type {
   AnalysisCandidate,
   AnalysisManualFallback,
   AnalysisModelSummary,
   AnalysisParserSummary,
+  PersistedAnalysisRun,
   AnalysisResponse,
   AnalysisSourceReference,
 } from "../../provider/analysis/types.js";
@@ -20,7 +30,6 @@ const FIXED_SOURCE_REFERENCE = Object.freeze({
   workspaceId: "demo-provider-workspace",
   projectId: "synthetic-pdf-review",
   sourceId: "provider-upload",
-  versionId: "v1",
 });
 
 const manualFallback: AnalysisManualFallback = Object.freeze({
@@ -67,6 +76,7 @@ type SealResult =
   | Readonly<{ ok: false; errors: readonly unknown[] }>;
 
 type ModelResultLike = Readonly<{
+  model?: string;
   review: Readonly<{
     claims: readonly Readonly<{
       claimId: string;
@@ -106,6 +116,13 @@ export type AnalysisDependencies = Readonly<{
     metadata: unknown,
   ) => SealResult;
   generateCandidates: (run: unknown) => Promise<ModelResultLike>;
+  requestedBySubjectDigest: string;
+  persistRun: (input: Readonly<{
+    source: AnalysisSourceVersionInput;
+    run: AnalysisRunInput;
+  }>) => Promise<void>;
+  newRunId?: () => string;
+  modelReference?: () => string | null;
   now?: () => Date;
 }>;
 
@@ -132,7 +149,10 @@ function failure(
   status: number,
   code: string,
   message: string,
-  details: Partial<Pick<Extract<AnalysisResponse, { ok: false }>, "parser" | "model">> = {},
+  details: Partial<Pick<
+    Extract<AnalysisResponse, { ok: false }>,
+    "parser" | "model" | "run"
+  >> = {},
 ): AnalysisExecution {
   return {
     status,
@@ -282,10 +302,15 @@ export function validateAnalysisFormData(
   };
 }
 
-function sourceMetadata(geminiPermitted: boolean, now: Date): unknown {
+function sourceMetadata(
+  geminiPermitted: boolean,
+  now: Date,
+  versionId: string,
+): unknown {
   const recordedAt = now.toISOString();
   return {
     ...FIXED_SOURCE_REFERENCE,
+    versionId,
     provenance: {
       origin: "other",
       suppliedBy: "authenticated-provider",
@@ -342,7 +367,10 @@ function parserSummary(
   };
 }
 
-function candidateSummary(result: ModelResultLike): AnalysisModelSummary {
+function candidateSummary(result: ModelResultLike): Extract<
+  AnalysisModelSummary,
+  { status: "completed" }
+> {
   const candidates: AnalysisCandidate[] = result.review.claims.map((claim) => ({
     claimId: claim.claimId,
     interpretation: claim.interpretation,
@@ -366,6 +394,147 @@ function candidateSummary(result: ModelResultLike): AnalysisModelSummary {
     candidates,
     missingContext: result.review.coverage.missingContext,
   };
+}
+
+function sourceDigest(exactText: string): string {
+  return createHash("sha256").update(exactText, "utf8").digest("hex");
+}
+
+function candidatePayload(model: Extract<
+  AnalysisModelSummary,
+  { status: "completed" }
+>): AnalysisCandidatePayload {
+  return {
+    schemaReference: ANALYSIS_CANDIDATE_SCHEMA_REFERENCE,
+    humanReviewRequired: true,
+    publicationBlocked: true,
+    candidates: model.candidates,
+    missingContext: model.missingContext,
+  };
+}
+
+function persistenceInput(
+  submission: AnalysisSubmission,
+  dependencies: AnalysisDependencies,
+  runId: string,
+  recordedAt: Date,
+  parsed: ParsedPdfLike,
+  parser: AnalysisParserSummary,
+  run: Readonly<{
+    status: PersistedAnalysisRun["status"];
+    providerReference: PersistedAnalysisRun["providerReference"];
+    modelReference: string | null;
+    candidatePayload: AnalysisCandidatePayload | null;
+    failureDiagnostic: AnalysisRunInput["failureDiagnostic"];
+  }>,
+): Readonly<{
+  source: AnalysisSourceVersionInput;
+  run: AnalysisRunInput;
+}> {
+  const unavailable = new Set(
+    parsed.unavailablePages.map((page) => page.pageNumber),
+  );
+  const extractedByPage = new Map(
+    parsed.pages.map((page) => [page.pageNumber, page] as const),
+  );
+  const coverage: AnalysisSourceVersionInput["coverage"] = Array.from(
+    { length: parsed.declaredPageCount },
+    (_, index) => {
+      const pageNumber = index + 1;
+      const extracted = extractedByPage.get(pageNumber);
+      if (extracted) {
+        return {
+          pageNumber,
+          status: "extracted" as const,
+          start: extracted.start,
+          end: extracted.end,
+        };
+      }
+      if (!unavailable.has(pageNumber)) {
+        throw new Error("INCOMPLETE_PARSER_COVERAGE");
+      }
+      return {
+        pageNumber,
+        status: "unavailable" as const,
+        reasonCode: "parser-reported-unavailable" as const,
+      };
+    },
+  );
+  const exactTextDigest = sourceDigest(parsed.extractedText);
+  const recordedAtIso = recordedAt.toISOString();
+  return {
+    source: {
+      ...FIXED_SOURCE_REFERENCE,
+      versionId: runId,
+      exactText: parsed.extractedText,
+      exactTextDigest,
+      parserReference: parsed.extractorReference,
+      extractionStatus: parser.extractionStatus,
+      declaredByteLength: parsed.declaredByteLength,
+      declaredPageCount: parsed.declaredPageCount,
+      extractedPageCount: parsed.pages.length,
+      codePointCount: parser.codePointCount,
+      recordedAt,
+      provenance: {
+        origin: "other",
+        suppliedBy: "authenticated-provider",
+        contentAttestation: "synthetic-or-permitted",
+        attestedAt: recordedAt,
+      },
+      permissions: submission.geminiPermitted
+        ? {
+          studioSharing: "permitted",
+          modelProcessing: "permitted",
+          modelInputReview: "cleared",
+          reviewedBySubjectDigest: dependencies.requestedBySubjectDigest,
+          reviewedAt: recordedAt,
+        }
+        : {
+          studioSharing: "permitted",
+          modelProcessing: "denied",
+          modelInputReview: "not-reviewed",
+          reviewedBySubjectDigest: null,
+          reviewedAt: null,
+        },
+      coverage,
+    },
+    run: {
+      ...FIXED_SOURCE_REFERENCE,
+      runId,
+      requestedBySubjectDigest: dependencies.requestedBySubjectDigest,
+      sourceVersionId: runId,
+      providerReference: run.providerReference,
+      modelReference: run.modelReference,
+      candidateSchemaReference: ANALYSIS_CANDIDATE_SCHEMA_REFERENCE,
+      configReference: run.providerReference === "manual"
+        ? "scopeledger.analysis.manual.v1"
+        : "scopeledger.gemini.server-config.v1",
+      status: run.status,
+      candidatePayload: run.candidatePayload,
+      failureDiagnostic: run.failureDiagnostic,
+      createdAt: recordedAtIso,
+    },
+  };
+}
+
+function persistedRun(
+  runId: string,
+  recordedAt: Date,
+  exactTextDigest: string,
+  status: PersistedAnalysisRun["status"],
+  providerReference: PersistedAnalysisRun["providerReference"],
+  modelReference: string | null,
+): PersistedAnalysisRun {
+  return Object.freeze({
+    runId,
+    status,
+    recordedAt: recordedAt.toISOString(),
+    sourceDigest: exactTextDigest,
+    providerReference,
+    modelReference,
+    humanReviewRequired: true,
+    publicationBlocked: true,
+  });
 }
 
 function errorCode(error: unknown): string | null {
@@ -454,6 +623,8 @@ export async function executeAnalysisUpload(
   submission: AnalysisSubmission,
   dependencies: AnalysisDependencies,
 ): Promise<AnalysisExecution> {
+  const recordedAt = dependencies.now?.() ?? new Date();
+  const runId = dependencies.newRunId?.() ?? randomUUID();
   let parsed: ParsedPdfLike;
   try {
     parsed = await dependencies.extractPdf(
@@ -469,7 +640,8 @@ export async function executeAnalysisUpload(
       parsed,
       sourceMetadata(
         submission.geminiPermitted,
-        dependencies.now?.() ?? new Date(),
+        recordedAt,
+        runId,
       ),
     );
   } catch {
@@ -487,21 +659,55 @@ export async function executeAnalysisUpload(
     );
   }
   const parser = parserSummary(parsed, sealed.value);
+  const exactTextDigest = sourceDigest(parsed.extractedText);
 
   if (!submission.geminiPermitted) {
+    const model: AnalysisModelSummary = {
+      status: "not-requested",
+      humanReviewRequired: true,
+      publicationBlocked: true,
+      candidates: [],
+      missingContext: [],
+    };
+    try {
+      await dependencies.persistRun(persistenceInput(
+        submission,
+        dependencies,
+        runId,
+        recordedAt,
+        parsed,
+        parser,
+        {
+          status: "manual-review-ready",
+          providerReference: "manual",
+          modelReference: null,
+          candidatePayload: null,
+          failureDiagnostic: null,
+        },
+      ));
+    } catch {
+      return failure(
+        503,
+        "ANALYSIS_PERSISTENCE_FAILED",
+        "Extraction completed, but no durable analysis run was saved. Retry before relying on this result.",
+        { parser, model },
+      );
+    }
     return {
       status: 200,
       body: {
         ok: true,
         code: "ANALYSIS_COMPLETE",
         parser,
-        model: {
-          status: "not-requested",
-          humanReviewRequired: true,
-          publicationBlocked: true,
-          candidates: [],
-          missingContext: [],
-        },
+        model,
+        run: persistedRun(
+          runId,
+          recordedAt,
+          exactTextDigest,
+          "manual-review-ready",
+          "manual",
+          null,
+        ),
         manualFallback,
       },
     };
@@ -518,23 +724,100 @@ export async function executeAnalysisUpload(
         text: "Review this uploaded provider document for candidate scope interpretations.",
       },
     });
+    const model = candidateSummary(result);
+    const modelReference = result.model
+      ?? dependencies.modelReference?.()
+      ?? null;
+    try {
+      await dependencies.persistRun(persistenceInput(
+        submission,
+        dependencies,
+        runId,
+        recordedAt,
+        parsed,
+        parser,
+        {
+          status: "candidate-ready",
+          providerReference: "google-gemini",
+          modelReference,
+          candidatePayload: candidatePayload(model),
+          failureDiagnostic: null,
+        },
+      ));
+    } catch {
+      return failure(
+        503,
+        "ANALYSIS_PERSISTENCE_FAILED",
+        "Candidate processing completed, but no durable analysis run was saved. The candidate must not be relied on or published.",
+        { parser, model },
+      );
+    }
     return {
       status: 200,
       body: {
         ok: true,
         code: "ANALYSIS_COMPLETE",
         parser,
-        model: candidateSummary(result),
+        model,
+        run: persistedRun(
+          runId,
+          recordedAt,
+          exactTextDigest,
+          "candidate-ready",
+          "google-gemini",
+          modelReference,
+        ),
         manualFallback,
       },
     };
   } catch (error) {
     const modelFailure = failedModel(error);
+    const modelReference = dependencies.modelReference?.() ?? null;
+    try {
+      await dependencies.persistRun(persistenceInput(
+        submission,
+        dependencies,
+        runId,
+        recordedAt,
+        parsed,
+        parser,
+        {
+          status: "model-failed",
+          providerReference: "google-gemini",
+          modelReference,
+          candidatePayload: null,
+          failureDiagnostic: {
+            code: modelFailure.model.status === "failed"
+              ? modelFailure.model.code
+              : "MODEL_PROCESSING_FAILED",
+            message: modelFailure.message,
+          },
+        },
+      ));
+    } catch {
+      return failure(
+        503,
+        "ANALYSIS_PERSISTENCE_FAILED",
+        "Extraction completed, but the failed model attempt and manual-review basis could not be saved. Retry before relying on this result.",
+        { parser, model: modelFailure.model },
+      );
+    }
     return failure(
       modelFailure.status,
       modelFailure.code,
       modelFailure.message,
-      { parser, model: modelFailure.model },
+      {
+        parser,
+        model: modelFailure.model,
+        run: persistedRun(
+          runId,
+          recordedAt,
+          exactTextDigest,
+          "model-failed",
+          "google-gemini",
+          modelReference,
+        ),
+      },
     );
   }
 }

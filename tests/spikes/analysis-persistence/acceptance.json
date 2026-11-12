@@ -1,0 +1,28 @@
+{
+  "task": "provider-analysis-persistence",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "commands": [
+    "npm run test:analysis-persistence",
+    "npm run test:analysis-ui"
+  ],
+  "result": {
+    "postgresqlTests": 4,
+    "serviceTests": 9,
+    "failed": 0
+  },
+  "proved": [
+    "Sequential migration 003 installation and upgrades",
+    "Immutable and idempotent source/run storage",
+    "User-scoped run listing",
+    "Append-only digest-bound human review dispositions",
+    "Publication remains blocked"
+  ],
+  "notProved": [
+    "Private object storage for original bytes",
+    "Malware scanning or hostile-document safety",
+    "Real private-document processing permission",
+    "Publication commands or production deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

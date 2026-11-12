@@ -1,0 +1,25 @@
+{
+  "task": "client-context-correction-submission",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:client-submissions",
+  "result": {
+    "tests": 10,
+    "passed": 10,
+    "failed": 0
+  },
+  "proved": [
+    "Same-origin verified client-approver access is required",
+    "The server owns the current version, digest, actor and concern identity",
+    "Unicode code-point limits preserve valid input without silent truncation",
+    "An explicit correction creates a durable concern and review hold without changing decision or payment facts",
+    "Unavailable source context remains an honest supported path"
+  ],
+  "notProved": [
+    "Durable question submission because the domain has no question record contract",
+    "External notification delivery",
+    "Provider reconciliation and reissue of the new concern",
+    "Public multi-user deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

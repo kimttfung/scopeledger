@@ -1,0 +1,25 @@
+{
+  "task": "provider-work-start-observation",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:work-start",
+  "result": {
+    "tests": 8,
+    "passed": 8,
+    "failed": 0
+  },
+  "proved": [
+    "Verified provider email and MFA are required",
+    "The current server-side product grant remains independently required",
+    "The browser cannot supply readiness, version, actor or timestamp authority",
+    "The server locks and rechecks readiness and holds before recording",
+    "Replay is idempotent and readiness remains distinct from actual work start"
+  ],
+  "notProved": [
+    "A real work-start observation in the completed demo, which remains intentionally not recorded",
+    "External operational notifications",
+    "Delivery or delivery acceptance",
+    "Public deployment and staff administration"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

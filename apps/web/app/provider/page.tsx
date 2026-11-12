@@ -120,6 +120,9 @@ export default async function ProviderPage() {
         <a href="/provider/analysis">Open protected PDF analysis</a>
       </p>
       <p>
+        <a href="/provider/operations">Open provider operations</a>
+      </p>
+      <p>
         <a href="/auth/logout">Sign out</a>
       </p>
     </ProviderShell>

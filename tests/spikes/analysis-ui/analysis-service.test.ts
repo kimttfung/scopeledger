@@ -8,6 +8,18 @@ import {
   validateAnalysisFormData,
   validateAnalysisRequestHeaders,
 } from "../../../apps/web/app/api/analysis/analysis-service.js";
+import type {
+  AnalysisRunInput,
+  AnalysisSourceVersionInput,
+} from "@scopeledger/db";
+
+const providerSubjectDigest = "a".repeat(64);
+const runId = "11111111-1111-4111-8111-111111111111";
+
+type PersistedInput = Readonly<{
+  source: AnalysisSourceVersionInput;
+  run: AnalysisRunInput;
+}>;
 
 function uploadFile(
   bytes = new TextEncoder().encode("%PDF-1.7 synthetic"),
@@ -116,6 +128,7 @@ test("accepts only the PDF and bounded attestation flags", () => {
 
 test("parser-only execution seals fixed server metadata and never calls Gemini", async () => {
   const metadataInputs: unknown[] = [];
+  const persisted: PersistedInput[] = [];
   let generated = 0;
   const execution = await executeAnalysisUpload(
     { file: uploadFile(), geminiPermitted: false },
@@ -129,6 +142,11 @@ test("parser-only execution seals fixed server metadata and never calls Gemini",
         generated += 1;
         throw new Error("must not run");
       },
+      requestedBySubjectDigest: providerSubjectDigest,
+      persistRun: async (input) => {
+        persisted.push(input);
+      },
+      newRunId: () => runId,
       now: () => new Date("2026-11-11T12:00:00.000Z"),
     },
   );
@@ -136,6 +154,7 @@ test("parser-only execution seals fixed server metadata and never calls Gemini",
   assert.equal(execution.status, 200);
   assert.equal(execution.body.ok, true);
   assert.equal(generated, 0);
+  assert.equal(persisted.length, 1);
   assert.equal(metadataInputs.length, 1);
   const metadata = metadataInputs[0] as TestSourceMetadata;
   assert.equal(metadata.workspaceId, "demo-provider-workspace");
@@ -147,11 +166,17 @@ test("parser-only execution seals fixed server metadata and never calls Gemini",
     assert.equal(execution.body.parser.codePointCount, 46);
     assert.equal(execution.body.model.status, "not-requested");
     assert.equal(execution.body.model.publicationBlocked, true);
+    assert.equal(execution.body.run.runId, runId);
+    assert.equal(execution.body.run.status, "manual-review-ready");
   }
+  assert.equal(persisted[0]?.source.exactText, parsedPdf.extractedText);
+  assert.equal(persisted[0]?.source.versionId, runId);
+  assert.equal(persisted[0]?.run.status, "manual-review-ready");
 });
 
 test("Gemini opt-in returns exact quotes, polarity, and blocked review state", async () => {
   let run: unknown;
+  const persisted: PersistedInput[] = [];
   const execution = await executeAnalysisUpload(
     { file: uploadFile(), geminiPermitted: true },
     {
@@ -162,30 +187,29 @@ test("Gemini opt-in returns exact quotes, polarity, and blocked review state", a
       }),
       generateCandidates: async (input) => {
         run = input;
+        const source = (input as {
+          sources: Array<{
+            workspaceId: string;
+            projectId: string;
+            sourceId: string;
+            versionId: string;
+          }>;
+        }).sources[0]!;
         return {
+          model: "gemini-test-model",
           review: {
             claims: [{
               claimId: "claim-1",
               interpretation: "The populated page is described as additional.",
               supportingEvidence: [{
-                source: {
-                  workspaceId: "demo-provider-workspace",
-                  projectId: "synthetic-pdf-review",
-                  sourceId: "provider-upload",
-                  versionId: "v1",
-                },
+                source,
                 start: 17,
                 end: 46,
                 quote: "Populated page is additional.",
                 polarity: "supporting",
               }],
               chargeWeakeningEvidence: [{
-                source: {
-                  workspaceId: "demo-provider-workspace",
-                  projectId: "synthetic-pdf-review",
-                  sourceId: "provider-upload",
-                  versionId: "v1",
-                },
+                source,
                 start: 0,
                 end: 16,
                 quote: "Included layout.",
@@ -203,6 +227,11 @@ test("Gemini opt-in returns exact quotes, polarity, and blocked review state", a
           },
         };
       },
+      requestedBySubjectDigest: providerSubjectDigest,
+      persistRun: async (input) => {
+        persisted.push(input);
+      },
+      newRunId: () => runId,
       now: () => new Date("2026-11-11T12:00:00.000Z"),
     },
   );
@@ -213,6 +242,7 @@ test("Gemini opt-in returns exact quotes, polarity, and blocked review state", a
     workspaceId: string;
     projectId: string;
     sources: Array<{
+      versionId: string;
       permissions: {
         modelProcessing: string;
         modelInputReview: { status: string };
@@ -221,6 +251,7 @@ test("Gemini opt-in returns exact quotes, polarity, and blocked review state", a
   };
   assert.equal(submittedRun.workspaceId, "demo-provider-workspace");
   assert.equal(submittedRun.projectId, "synthetic-pdf-review");
+  assert.equal(submittedRun.sources[0]?.versionId, runId);
   assert.equal(submittedRun.sources[0]?.permissions.modelProcessing, "permitted");
   assert.equal(
     submittedRun.sources[0]?.permissions.modelInputReview.status,
@@ -242,10 +273,19 @@ test("Gemini opt-in returns exact quotes, polarity, and blocked review state", a
       "human-review-required",
     );
     assert.equal(execution.body.model.publicationBlocked, true);
+    assert.equal(execution.body.run.status, "candidate-ready");
+    assert.equal(execution.body.run.modelReference, "gemini-test-model");
   }
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0]?.run.status, "candidate-ready");
+  assert.equal(
+    persisted[0]?.run.candidatePayload?.candidates[0]?.evidence.length,
+    2,
+  );
 });
 
 test("model failures retain parser results and an honest manual fallback", async () => {
+  const persisted: PersistedInput[] = [];
   const execution = await executeAnalysisUpload(
     { file: uploadFile(), geminiPermitted: true },
     {
@@ -259,6 +299,12 @@ test("model failures retain parser results and an honest manual fallback", async
           code: "PROVIDER_REJECTED",
         });
       },
+      requestedBySubjectDigest: providerSubjectDigest,
+      persistRun: async (input) => {
+        persisted.push(input);
+      },
+      newRunId: () => runId,
+      modelReference: () => "gemini-test-model",
     },
   );
   assert.equal(execution.status, 502);
@@ -269,6 +315,51 @@ test("model failures retain parser results and an honest manual fallback", async
     assert.equal(execution.body.manualFallback.available, true);
     assert.equal(
       JSON.stringify(execution.body).includes("provider detail must not escape"),
+      false,
+    );
+    assert.equal(execution.body.run?.status, "model-failed");
+  }
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0]?.run.status, "model-failed");
+  assert.deepEqual(persisted[0]?.run.failureDiagnostic, {
+    code: "MODEL_PROCESSING_FAILED",
+    message: "Gemini candidate processing did not complete. Manual review remains available.",
+  });
+  assert.equal(
+    JSON.stringify(persisted[0]).includes("provider detail must not escape"),
+    false,
+  );
+});
+
+test("persistence failure returns no-success response with parser evidence only", async () => {
+  const execution = await executeAnalysisUpload(
+    { file: uploadFile(), geminiPermitted: false },
+    {
+      extractPdf: async () => parsedPdf,
+      sealParsedPdfSource: (_parsed, metadata) => ({
+        ok: true,
+        value: sealedSource(metadata),
+      }),
+      generateCandidates: async () => {
+        throw new Error("must not run");
+      },
+      requestedBySubjectDigest: providerSubjectDigest,
+      persistRun: async () => {
+        throw new Error("database detail must not escape");
+      },
+      newRunId: () => runId,
+      now: () => new Date("2026-11-11T12:00:00.000Z"),
+    },
+  );
+
+  assert.equal(execution.status, 503);
+  assert.equal(execution.body.ok, false);
+  if (!execution.body.ok) {
+    assert.equal(execution.body.code, "ANALYSIS_PERSISTENCE_FAILED");
+    assert.equal(execution.body.parser?.sourceReference.versionId, runId);
+    assert.equal("run" in execution.body, false);
+    assert.equal(
+      JSON.stringify(execution.body).includes("database detail must not escape"),
       false,
     );
   }

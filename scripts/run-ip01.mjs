@@ -130,8 +130,8 @@ function streamRedacted(stream, destination, connectionUrl) {
   });
 }
 
-async function runTests(connectionUrl, runId, onChild) {
-  const directory = path.join(root, "tests/spikes/ordered-consent");
+async function runTests(connectionUrl, runId, suite, onChild) {
+  const directory = path.join(root, "tests/spikes", suite);
   const files = (await readdir(directory))
     .filter((name) => name.endsWith(".test.ts"))
     .sort()
@@ -178,8 +178,15 @@ async function cleanupOwnedContainer(name, runId) {
 
 export async function main() {
   const arguments_ = process.argv.slice(2);
-  if (arguments_.some((argument) => argument !== "--check-runtime")) {
-    console.error("Unknown IP-01 runner argument. Only --check-runtime is supported.");
+  const suiteArgument = arguments_.find((argument) => argument.startsWith("--suite="));
+  const suite = suiteArgument?.slice("--suite=".length) ?? "ordered-consent";
+  const supportedSuites = new Set(["ordered-consent", "analysis-persistence"]);
+  if (
+    !supportedSuites.has(suite)
+    || arguments_.some((argument) =>
+      argument !== "--check-runtime" && argument !== suiteArgument)
+  ) {
+    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence.");
     process.exitCode = 1;
     return;
   }
@@ -253,7 +260,7 @@ export async function main() {
       return;
     }
     console.log("Evidence profile: local deterministic faults and PostgreSQL transactions; not actual PayPal, identity, model, or R1 restore evidence.");
-    const code = await runTests(connectionUrl, runId, (running) => { child = running; });
+    const code = await runTests(connectionUrl, runId, suite, (running) => { child = running; });
     process.exitCode = interrupted ? 130 : code;
   } catch (error) {
     const message = error instanceof Error ? error.message : "The IP-01 runtime failed.";

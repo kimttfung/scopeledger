@@ -1,0 +1,28 @@
+{
+  "task": "database-backed-payer-checkout",
+  "profile": "local-synthetic-paypal-sandbox",
+  "observedDate": "2026-11-11",
+  "commands": [
+    "npm run test:payment-ui",
+    "live browser journey through the local PostgreSQL demo"
+  ],
+  "result": {
+    "tests": 11,
+    "passed": 11,
+    "failed": 0
+  },
+  "observed": [
+    "A verified local payer session prepared Checkout only from the accepted version 2 obligation",
+    "PayPal Sandbox displayed and approved the exact USD 300.00 payment",
+    "The browser return remained pending until an explicit same-attempt capture and authoritative provider retrieval",
+    "PostgreSQL-derived readiness changed from awaiting-payment to ready",
+    "Work start remained not recorded"
+  ],
+  "notProved": [
+    "Live money or production merchant eligibility",
+    "Stable webhook delivery, duplicate/reordering behavior or scheduled receipt processing",
+    "Controlled lost-response, refund or reversal recovery",
+    "Public deployment or assistive-technology Checkout conformance"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}

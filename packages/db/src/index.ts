@@ -4,6 +4,7 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import type { ColumnType, Generated, Transaction } from "kysely";
 import { migration001 } from "./migrations/001-ordered-consent.js";
 import { migration002 } from "./migrations/002-runtime-persistence.js";
+import { migration003 } from "./migrations/003-analysis-persistence.js";
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type Json = ColumnType<unknown, string, string>;
@@ -22,6 +23,14 @@ export interface Database {
   access_challenges: Scope & { id: string; recipient_reference: string; role: "client-approver" | "payer"; code_digest: string; issued_at: Timestamp; expires_at: Timestamp; attempts: Generated<number>; status: Generated<"active" | "verified" | "superseded">; verified_at: Timestamp | null };
   paypal_webhook_receipts: { workspace_id: string; environment: "sandbox" | "live"; merchant_id: string; event_id: string; event_type: string; resource_type: string; resource_id: string | null; resource_status: string | null; provider_created_at: Timestamp; received_at: Timestamp; verification_reference: string };
   paypal_approval_links: Scope & { operation_id: string; order_id: string; approval_url: string; stored_at: Timestamp };
+  analysis_scopes: Scope & { purpose: "synthetic-provider-analysis"; created_at: Timestamp };
+  analysis_source_identities: Scope & { source_id: string; source_kind: "provider-upload"; created_at: Timestamp };
+  analysis_source_versions: Scope & { source_id: string; version_id: string; exact_text: string; exact_text_digest: string; parser_reference: string; extraction_status: "complete" | "partial"; declared_byte_length: number; declared_page_count: number; extracted_page_count: number; code_point_count: number; record_digest: string; recorded_at: Timestamp };
+  analysis_source_provenance: Scope & { source_id: string; version_id: string; origin: "other"; supplied_by: "authenticated-provider"; content_attestation: "synthetic-or-permitted"; attested_at: Timestamp };
+  analysis_source_permissions: Scope & { source_id: string; version_id: string; studio_sharing: "permitted"; model_processing: "permitted" | "denied"; model_input_review: "cleared" | "not-reviewed"; reviewed_by_subject_digest: string | null; reviewed_at: Timestamp | null };
+  analysis_source_coverage: Scope & { source_id: string; version_id: string; page_number: number; status: "extracted" | "unavailable"; start_offset: number | null; end_offset: number | null; reason_code: "parser-reported-unavailable" | null };
+  analysis_runs: Scope & { run_id: string; requested_by_subject_digest: string; source_id: string; source_version_id: string; provider_reference: "manual" | "google-gemini"; model_reference: string | null; candidate_schema_reference: "scopeledger.analysis-candidates.v1"; config_reference: "scopeledger.analysis.manual.v1" | "scopeledger.gemini.server-config.v1"; status: "manual-review-ready" | "candidate-ready" | "model-failed"; candidate_payload: Json | null; candidate_digest: string | null; failure_code: string | null; failure_message: string | null; human_review_required: true; publication_blocked: true; run_digest: string; created_at: Timestamp };
+  analysis_human_reviews: Scope & { review_id: string; run_id: string; reviewer_subject_digest: string; reviewed_at: Timestamp; disposition: "accept" | "edit" | "reject" | "manual"; note: string; run_basis_digest: string; candidate_basis_digest: string | null };
 }
 export type ProtocolTransaction = Transaction<Database>;
 export type SqlExecutor = Kysely<Database> | ProtocolTransaction;
@@ -126,6 +135,7 @@ export class ProtocolDatabase {
       const migrations = [
         { version: 1, source: migration001 },
         { version: 2, source: migration002 },
+        { version: 3, source: migration003 },
       ] as const;
       if (applied.some((version, index) => version !== index + 1)
           || applied.length > migrations.length) {
@@ -177,5 +187,6 @@ export async function createIsolatedProofDatabase(connectionString: string): Pro
   };
 }
 
-export { migration001, migration002, sql };
+export { migration001, migration002, migration003, sql };
 export * from "./runtime-persistence.js";
+export * from "./analysis-persistence.js";

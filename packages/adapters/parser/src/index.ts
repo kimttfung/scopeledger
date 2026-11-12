@@ -131,7 +131,7 @@ export async function extractPdf(
 
   const directory = await mkdtemp(join(tmpdir(), "scopeledger-parser-"));
   const inputPath = join(directory, "input.pdf");
-  const workerPath = fileURLToPath(new URL("./pdf-worker.js", import.meta.url));
+  const workerPath = fileURLToPath(new URL("./pdf-worker.mjs", import.meta.url));
   try {
     await writeFile(inputPath, input, { mode: 0o400 });
     let stdout: string;

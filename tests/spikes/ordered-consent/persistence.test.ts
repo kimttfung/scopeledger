@@ -71,7 +71,7 @@ test("fresh PostgreSQL installation applies every reviewed migration in order", 
   const versions = (await sql<{ version: number }>`
     select version from schema_migrations order by version
   `.execute(isolated.database.kysely)).rows.map((row) => row.version);
-  assert.deepEqual(versions, [1, 2]);
+  assert.deepEqual(versions, [1, 2, 3]);
   const relations = (await sql<{ name: string }>`
     select c.relname as name
     from pg_catalog.pg_class c
@@ -91,7 +91,7 @@ test("fresh PostgreSQL installation applies every reviewed migration in order", 
   ]);
 });
 
-test("existing migration 001 installation upgrades to 002 without replacing protocol data", async (t) => {
+test("existing migration 001 installation upgrades through reviewed migrations without replacing protocol data", async (t) => {
   const targets = await migrationTargets(t);
   const database = await targets.create();
   await database.transaction(async (transaction) => {
@@ -105,19 +105,19 @@ test("existing migration 001 installation upgrades to 002 without replacing prot
   await database.migrate();
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2]);
+  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3]);
   assert.equal((await sql`select 1 from projects
     where workspace_id = 'upgrade-workspace' and id = 'upgrade-project'`
     .execute(database.kysely)).rows.length, 1);
   await database.migrate();
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2]);
+  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3]);
 });
 
 test("migration rejects gapped, unknown, and unversioned nonempty histories", async (t) => {
   const targets = await migrationTargets(t);
-  for (const versions of [[2], [1, 3], [1, 2, 3]]) {
+  for (const versions of [[2], [1, 3], [1, 2, 4], [1, 2, 3, 4]]) {
     const database = await targets.create();
     await database.transaction(async (transaction) => {
       await sql`create table schema_migrations(

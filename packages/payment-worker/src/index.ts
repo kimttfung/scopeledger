@@ -18,10 +18,17 @@ import type {
   PayPalCaptureDetails,
   PayPalExecutionResult,
 } from "@scopeledger/paypal-adapter";
+import {
+  captureNormalizationAdmission,
+} from "./reconciliation-admission.js";
+
+export * from "./reconciliation-admission.js";
+export * from "./webhook-processor.js";
 
 export type PaymentWorkerErrorCode =
   | "APPROVAL_LINK_INVALID"
-  | "APPROVAL_LINK_STORAGE_FAILED";
+  | "APPROVAL_LINK_STORAGE_FAILED"
+  | "RECONCILIATION_TARGET_MISMATCH";
 
 export class PaymentWorkerError extends Error {
   constructor(
@@ -156,12 +163,77 @@ export class PayPalCaptureReconciler {
       details.orderId,
     );
     const observation = this.client.captureObservationFromDetails(
-      admission,
+      captureNormalizationAdmission(admission),
       details,
     );
     const reduced = await this.store.recordObservation(scope, observation);
     return Object.freeze({
       orderId: details.orderId,
+      ...reduced,
+    });
+  }
+
+  async reconcileKnownCapture(
+    scope: Scope,
+    targetInput: Readonly<{
+      operationId: string;
+      orderId: string;
+      captureId: string;
+    }>,
+  ): Promise<{
+    readonly outcome: "pending" | "unknown" | "completed";
+    readonly matchesBasis: boolean;
+    readonly completed: boolean;
+  }> {
+    const target = parseInput(
+      z.strictObject({
+        operationId: commandIdentifier,
+        orderId: identifier,
+        captureId: identifier,
+      }),
+      targetInput,
+    );
+    const details = await this.client.retrieveCaptureDetails(target.captureId);
+    if (
+      details.captureId !== target.captureId
+      || details.orderId !== target.orderId
+    ) {
+      throw new PaymentWorkerError(
+        "RECONCILIATION_TARGET_MISMATCH",
+        "Authoritative capture identity did not match the server-known payment attempt",
+      );
+    }
+    const admission = await this.store.captureReconciliationAdmission(
+      scope,
+      target.orderId,
+    );
+    if (
+      admission.operationId !== target.operationId
+      || admission.kind !== "capture"
+    ) {
+      throw new PaymentWorkerError(
+        "RECONCILIATION_TARGET_MISMATCH",
+        "The server-known capture operation changed during reconciliation",
+      );
+    }
+    const observation = this.client.captureObservationFromDetails(
+      captureNormalizationAdmission(admission),
+      details,
+    );
+    if (
+      observation.operationId !== target.operationId
+      || observation.orderId !== target.orderId
+      || observation.captureId !== target.captureId
+      || observation.outcome === "order-created"
+    ) {
+      throw new PaymentWorkerError(
+        "RECONCILIATION_TARGET_MISMATCH",
+        "Normalized capture evidence did not match the stable operation identity",
+      );
+    }
+    const reduced = await this.store.recordObservation(scope, observation);
+    return Object.freeze({
+      outcome: observation.outcome,
       ...reduced,
     });
   }

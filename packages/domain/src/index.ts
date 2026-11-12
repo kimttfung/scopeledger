@@ -65,9 +65,12 @@ export const correctionAdmissionCommandSchema = commandSchema.extend({
     sharingAuthorized: z.literal(true), modelProcessingPermitted: z.boolean(),
   }),
 });
+export const workStartCommandSchema = commandSchema.extend({ unitId: identifier });
 export type PublishCommand = z.infer<typeof publishCommandSchema>;
 export type DecisionCommand = z.infer<typeof decisionCommandSchema>;
 export type CorrectionAdmissionCommand = z.infer<typeof correctionAdmissionCommandSchema>;
+export type WorkStartCommand = z.infer<typeof workStartCommandSchema>;
+export type WorkStartResult = { unitId: string; version: number; startedAt: string };
 
 function first<T>(rows: readonly T[], message = "Scoped record not found"): T {
   const row = rows[0];
@@ -934,6 +937,48 @@ export class OrderedConsentStore {
       const project = await fences(transaction, payer);
       await authorizePayer(transaction, payer, project);
       throw new ProtocolError("RETIREMENT_DISABLED", "SP-02 provider and dispatcher closure evidence is required; clocks, cancellation and 404s cannot retire attempts");
+    });
+  }
+
+  async observeWorkStart(actor: Actor, input: unknown): Promise<WorkStartResult> {
+    const command = parseInput(workStartCommandSchema, input);
+    return this.command(actor, "inspect", command, command, async (transaction, current) => {
+      const unit = first(await lockUnits(transaction, current, [command.unitId]));
+      const existing = (await sql<{ version: number; recorded_at: Date }>`
+        select (detail->>'version')::integer as version, recorded_at from protocol_history
+        where workspace_id = ${current.workspaceId} and project_id = ${current.projectId}
+          and event = 'work-started' and resource_id = ${command.unitId}
+        order by sequence limit 1
+      `.execute(transaction)).rows[0];
+      if (existing) {
+        return { unitId: command.unitId, version: existing.version, startedAt: existing.recorded_at.toISOString() };
+      }
+
+      await checkHolds(transaction, current, command.unitId);
+      if (unit.accepted_version === null) {
+        throw new ProtocolError("STALE_UNIT_VERSION", "Work start requires a current accepted unit version");
+      }
+      const { snapshot } = await published(transaction, current, command.unitId, unit.accepted_version);
+      if (snapshot.treatment === "payable") {
+        const fact = (await sql<{ fresh: boolean }>`select f.verified_at >= clock_timestamp() - interval '24 hours' as fresh
+          from obligations b join attempts a on a.workspace_id = b.workspace_id and a.project_id = b.project_id and a.obligation_id = b.id
+          join operations o on o.workspace_id = a.workspace_id and o.project_id = a.project_id and o.attempt_id = a.id and o.kind = 'capture'
+          join payment_facts f on f.workspace_id = o.workspace_id and f.project_id = o.project_id and f.operation_id = o.id
+          where b.workspace_id = ${current.workspaceId} and b.project_id = ${current.projectId} and b.unit_id = ${command.unitId}
+            and b.version = ${unit.accepted_version} and b.collectible`.execute(transaction)).rows[0];
+        if (!fact || !fact.fresh) {
+          throw new ProtocolError("RECONCILIATION_REQUIRED", "Work start requires current verified payment readiness");
+        }
+      }
+      await checkPrerequisites(transaction, current, snapshot, "start");
+
+      const started = first((await sql<{ version: number; recorded_at: Date }>`
+        insert into protocol_history(workspace_id,project_id,actor_id,event,resource_id,detail)
+        values (${current.workspaceId},${current.projectId},${current.actorId},'work-started',${command.unitId},
+          ${canonicalJson({ version: unit.accepted_version })}::jsonb)
+        returning (detail->>'version')::integer as version, recorded_at
+      `.execute(transaction)).rows);
+      return { unitId: command.unitId, version: started.version, startedAt: started.recorded_at.toISOString() };
     });
   }
 

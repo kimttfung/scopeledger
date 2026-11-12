@@ -99,13 +99,19 @@ PayPal's real **Return to Merchant** action now resolves to `/payments/paypal/re
 
 Real `CHECKOUT.ORDER.APPROVED` and `PAYMENT.CAPTURE.COMPLETED` sandbox events also passed PayPal postback signature verification through the HTTPS receiver. Each verified event was normalized and durably stored in a duplicate-safe private receipt before acknowledgment; raw payloads and payer data were not retained.
 
-IP-02 remains incomplete until the same provider behavior is exercised through durable ordered-consent dispatch, real duplicate/reordering/invalid-event cases, lost-response recovery, refund reads and same-attempt authorization recovery.
+The PostgreSQL-backed Cedar Roastery journey now exercises the approved USD 300.00 obligation through verified local payer access, server-owned Checkout preparation, PayPal's full-page sandbox approval, an honest pending return page, and explicit server-side capture/retrieval. Authoritative reconciliation changed readiness from `awaiting-payment` to `ready`; work start remained `not recorded`. The sanitized [payment-journey acceptance manifest](tests/spikes/payment-ui/acceptance.json) contains no provider identifiers or credentials.
+
+IP-02 remains incomplete for controlled lost-response recovery, real duplicate/reordering/invalid-event deliveries against a stable webhook endpoint, external refund/reversal observations, accessible assistive-technology coverage, and deployed recovery operations.
+
+The return journey also exposes an explicit read-only reconciliation action for the existing server-known capture. It performs OAuth plus authoritative capture retrieval without redispatching capture or creating a replacement attempt. The completed sandbox attempt was refreshed live as `completed` / `ready`; uncertain attempts without a stored capture identity remain an honest manual-recovery state. See the sanitized [payment-recovery manifest](tests/spikes/payment-recovery/acceptance.json).
 
 `@scopeledger/payment-worker` now connects the domain dispatch callback to the PayPal adapter. It stores a validated approval link only after the domain has recorded the provider observation; capture operations never create a link. The real IP-02 runner now uses the immutable PostgreSQL approval-link store rather than the earlier local file spike.
 
 One additional fresh USD 1.00 flow has now run through an owned real-PostgreSQL database, exact agreement/payer commands, durable create and capture intents, worker lease admission, the PayPal adapter and authenticated observation reduction. The original attempt resumed after buyer approval and the domain derived `ready`; no fixture or browser callback set that state.
 
 Webhook capture reconciliation now re-fetches `/v2/payments/captures/{id}`, validates merchant/Order/currency/gross, resolves exactly one admitted capture operation and applies the ordinary domain observation reducer. Duplicate or reordered notifications therefore cannot supply their own financial truth. Refund retrieval is implemented as a fixed-origin read of `/v2/payments/refunds/{id}` with validated parent-capture linkage; it cannot initiate a refund or rewrite the original payment.
+
+`npm run paypal:webhooks:process` now processes stored normalized receipts in deterministic provider-created/received/event order. Per-receipt failures do not stop later work, and summaries expose only event types, outcomes and counts. The current local run had no queued receipts because the prior temporary webhook URL is not a stable ingress; this is not evidence that webhook delivery is complete.
 
 ## Local backend proofs
 
@@ -156,7 +162,7 @@ npm run seed:demo
 
 The Cedar Roastery seed creates version 1, the client correction, provider response and version 2 through ordinary domain commands. The main review reads a no-store projection for agreement, payment and readiness facts. After local client-approver channel verification, approve/decline remains preview-first but an explicit record action submits the exact server-owned version/digest and identified concern response. Approval creates agreement/obligation state only; it never initiates payment.
 
-Migration 002 persists local access challenges, normalized verified PayPal webhook receipts and immutable PayPal approval links in PostgreSQL. Codes remain keyed digests, raw webhook bodies are not stored, and changed duplicate provider identities fail closed.
+Migration 002 persists local access challenges, normalized verified PayPal webhook receipts and immutable PayPal approval links in PostgreSQL. Migration 003 adds immutable analysis source/run records and append-only human review dispositions. Codes remain keyed digests, raw webhook bodies are not stored, and changed duplicate provider identities fail closed.
 
 Stop only the owned container with `npm run dev:db:stop`; the persistent volume is retained. The [acceptance manifest](tests/spikes/demo-db/acceptance.json) records the current read-only integration boundary.
 
@@ -198,18 +204,19 @@ Package and spike documentation records the public implementation boundaries and
 ## Prototype boundaries
 
 - All studio, client, source, scope, and price records are the synthetic fixture defined in the UX specification.
-- Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider analysis, and printing are interactive.
-- A verified local client approver can record the exact seeded approve/decline decision after preview. No browser button initiates payment, records work start, or treats model output as authority. Question/correction submission remains preview-only.
+- Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider analysis, protected provider operations, and printing are interactive.
+- A verified local client approver can record the exact seeded approve/decline decision after preview and submit missing-agreement context as a durable correction concern/review hold. Questions remain preview-only because the domain has no durable question record. A separately verified local payer can initiate only the server-recorded approved obligation, explicitly capture and verify the original Order after PayPal returns, and refresh the same attempt without redispatch. No browser-provided payment identity or amount is trusted, and model output is never authority.
+- `/provider/operations` keeps readiness and actual work start separate. A verified-email/MFA provider with the current synthetic product grant may record actual start only after the server locks and rechecks readiness and holds; the completed demo remains intentionally `not recorded`.
 - Form drafts live only in page memory. They are not saved to a server and are lost on refresh. Use synthetic text only.
 - Question and source fields each allow 10,000 Unicode code points. Longer input is preserved with a validation error, not silently truncated; previewing is blocked until it is corrected.
 - The static client preview can still render without external configuration. Connected identity, database, model, email and payment capabilities require the corresponding ignored local environment.
 - Browser previews and automated checks do not establish WCAG conformance or production readiness.
 
-The protected `/provider/analysis` route now accepts one attested PDF, runs isolated extraction and optionally prepares authenticated Gemini candidates. Results are ephemeral, exact-evidence-linked, human-review-required and publication-blocked.
+The protected `/provider/analysis` route now accepts one attested PDF, runs isolated extraction and optionally prepares authenticated Gemini candidates. PostgreSQL persists immutable source/run evidence and append-only provider review dispositions; candidates remain exact-evidence-linked, human-review-required and publication-blocked. A real authenticated synthetic PDF was parsed through Next.js, saved, reviewed, and observed again after reload. The parser worker emits as ESM (`.mjs`) so Next's CommonJS output boundary cannot mask a child-process syntax failure as a PDF error.
 
 ## Provider/staff identity
 
-Auth0 is the selected provider/staff identity boundary. It supplies OIDC login, encrypted application sessions, logout/recovery integration and MFA assurance. Client approvers and payers are not required to hold Auth0 accounts; their separate scoped verification remains future IP-03 work.
+Auth0 is the selected provider/staff identity boundary. It supplies OIDC login, encrypted application sessions, logout/recovery integration and MFA assurance. Client approvers and payers are not required to hold Auth0 accounts; the local demo uses separate scoped Mailpit verification, while external delivery, recovery and deployed grants remain future IP-03 work.
 
 Without Auth0 configuration, `/provider` fails closed with an unavailable state while the synthetic client-review page remains usable. Once configured, provider access requires both verified email and an MFA method/ACR claim; authentication alone does not grant product permissions.
 

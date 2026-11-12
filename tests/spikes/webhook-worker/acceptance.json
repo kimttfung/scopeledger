@@ -1,0 +1,25 @@
+{
+  "task": "paypal-webhook-processing",
+  "profile": "local-normalized-receipt-worker",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:webhook-worker",
+  "result": {
+    "tests": 8,
+    "passed": 8,
+    "failed": 0
+  },
+  "proved": [
+    "Deterministic receipt ordering",
+    "Authoritative capture retrieval before domain reduction",
+    "Stable duplicate and reordered processing",
+    "Per-receipt failure isolation",
+    "Summary output limited to counts, event types and outcomes"
+  ],
+  "notProved": [
+    "Stable deployed HTTPS ingress",
+    "Real delivery retries or provider reordering",
+    "Scheduled worker operation",
+    "External refund or reversal observation"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}

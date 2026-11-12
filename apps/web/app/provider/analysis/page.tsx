@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Provider PDF analysis | ScopeLedger",
-  description: "Protected, ephemeral provider PDF analysis.",
+  description: "Protected, persistent synthetic provider PDF analysis.",
   robots: { index: false, follow: false },
 };
 
@@ -118,14 +118,15 @@ export default async function ProviderAnalysisPage() {
             ScopeLedger<span className="wordmark-dot">.</span>
           </Link>
           <span className="studio-name">Provider workspace</span>
-          <span className="prototype-label">Ephemeral analysis</span>
+          <span className="prototype-label">Persistent demo analysis</span>
           <span className="role-label">Verified provider</span>
         </div>
       </header>
       <div className="prototype-notice">
         <p>
-          One PDF, isolated extraction, optional Gemini candidates. Nothing is
-          persisted or publishable.
+          One synthetic or permitted PDF, isolated extraction, optional Gemini
+          candidates, and an append-only provider review record. Publication
+          remains blocked.
         </p>
         <a href="/provider">Provider access status</a>
       </div>

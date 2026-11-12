@@ -37,6 +37,41 @@ type DecisionFailure = {
   ok: false;
   code: string;
 };
+type PaymentState =
+  | "not-started"
+  | "preparing"
+  | "awaiting-buyer-approval"
+  | "awaiting-capture"
+  | "pending"
+  | "completed"
+  | "reconciliation-required";
+type PaymentProjection = {
+  ok: true;
+  state: PaymentState;
+  readiness: ReviewProjection["readiness"];
+  approvalUrl?: string;
+};
+type PaymentFailure = {
+  ok: false;
+  code: string;
+  state?: PaymentState;
+};
+type SubmittedConcern = {
+  ok: true;
+  submitted: true;
+  kind: "correction";
+  concernId: string;
+  unitId: string;
+  version: number;
+  digest: string;
+  reviewStatus: "on-hold";
+  agreementChanged: false;
+  paymentChanged: false;
+};
+type SubmissionFailure = {
+  ok: false;
+  code: string;
+};
 
 const TEXT_LIMIT = 10_000;
 const limitError = "This field exceeds 10,000 Unicode code points. Shorten it before previewing; your text has been kept.";
@@ -96,6 +131,69 @@ function decisionErrorMessage(code: string): string {
   }
 }
 
+function paymentErrorMessage(code: string): string {
+  switch (code) {
+    case "PAYER_ACCESS_REQUIRED":
+    case "PAYER_ROLE_REQUIRED":
+    case "PAYMENT_NOT_AUTHORIZED":
+      return "Verified local payer access is required for checkout.";
+    case "PAYMENT_RECONCILIATION_REQUIRED":
+      return "The admitted PayPal operation has an unknown outcome. It was not retried; reconcile the original operation before continuing.";
+    case "PAYMENT_STATE_CHANGED":
+    case "CHECKOUT_NOT_READY":
+      return "The approved payment state changed. Refresh before continuing.";
+    default:
+      return "Checkout is unavailable. No payment was shown as completed.";
+  }
+}
+
+function submissionErrorMessage(code: string): string {
+  switch (code) {
+    case "CLIENT_ACCESS_REQUIRED":
+    case "CLIENT_APPROVER_REQUIRED":
+    case "SUBMISSION_NOT_AUTHORIZED":
+      return "Verified local client-approver access is required to submit this correction.";
+    case "SUBMISSION_TEXT_LIMIT":
+      return limitError;
+    case "INVALID_SUBMISSION_INPUT":
+      return "The correction must include valid text within the displayed Unicode code-point limits.";
+    case "SUBMISSION_NOT_AVAILABLE":
+    case "SUBMISSION_STATE_CHANGED":
+      return "The review basis changed. Refresh and review the current terms before submitting.";
+    case "QUESTION_SUBMISSION_UNSUPPORTED":
+      return "Questions cannot be recorded yet because the current domain has no durable question contract.";
+    default:
+      return "The correction could not be recorded safely. No concern, decision, or payment change was shown as successful.";
+  }
+}
+
+function validatedPayPalUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.origin !== "https://www.sandbox.paypal.com"
+      || url.username
+      || url.password
+      || url.hash
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPaymentStatus(): Promise<PaymentProjection | null> {
+  const response = await fetch("/api/demo/payment/status", {
+    method: "POST",
+    cache: "no-store",
+  });
+  const body = await response.json() as PaymentProjection | PaymentFailure;
+  return response.ok && body.ok ? body : null;
+}
+
 function InfoIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="info-icon">
@@ -128,12 +226,19 @@ export default function ReviewRequest() {
   const [recording, setRecording] = useState(false);
   const [recordError, setRecordError] = useState("");
   const [recordedDecision, setRecordedDecision] = useState<RecordedDecision | null>(null);
+  const [payment, setPayment] = useState<PaymentProjection | null>(null);
+  const [preparingPayment, setPreparingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+  const [submittingMessage, setSubmittingMessage] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
+  const [submittedConcern, setSubmittedConcern] = useState<SubmittedConcern | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const messageTriggerRef = useRef<HTMLButtonElement>(null);
   const sourceDetailsRef = useRef<HTMLDetailsElement>(null);
   const previousDetailsRef = useRef<HTMLDetailsElement>(null);
+  const paymentStatusLoadedRef = useRef(false);
   const readyToPreview = responseRead && hasAuthority;
   const messageLength = Array.from(message).length;
   const sourceLength = Array.from(source).length;
@@ -172,6 +277,23 @@ export default function ReviewRequest() {
     };
   }, []);
 
+  useEffect(() => {
+    if (
+      paymentStatusLoadedRef.current
+      || !projection?.acceptedVersion
+      || !access?.verified
+      || access.role !== "payer"
+    ) {
+      return;
+    }
+    paymentStatusLoadedRef.current = true;
+    void fetchPaymentStatus()
+      .then((status) => {
+        if (status) setPayment(status);
+      })
+      .catch(() => undefined);
+  }, [access, projection]);
+
   async function recordDecision(decision: "approve" | "decline") {
     setRecording(true);
     setRecordError("");
@@ -208,6 +330,37 @@ export default function ReviewRequest() {
     setPreview(decision);
   }
 
+  async function preparePayment() {
+    setPreparingPayment(true);
+    setPaymentError("");
+    try {
+      const response = await fetch("/api/demo/payment/prepare", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const body = await response.json() as PaymentProjection | PaymentFailure;
+      if (!response.ok || !body.ok) {
+        setPaymentError(paymentErrorMessage(body.ok ? "" : body.code));
+        return;
+      }
+      setPayment(body);
+      const approvalUrl = validatedPayPalUrl(body.approvalUrl);
+      if (!approvalUrl) {
+        setPaymentError(
+          body.state === "reconciliation-required"
+            ? paymentErrorMessage("PAYMENT_RECONCILIATION_REQUIRED")
+            : "Checkout did not return a validated PayPal approval URL. No navigation occurred.",
+        );
+        return;
+      }
+      window.location.assign(approvalUrl);
+    } catch {
+      setPaymentError(paymentErrorMessage("PAYMENT_SERVICE_UNAVAILABLE"));
+    } finally {
+      setPreparingPayment(false);
+    }
+  }
+
   function showSource() {
     const details = sourceDetailsRef.current;
     if (details) {
@@ -230,6 +383,7 @@ export default function ReviewRequest() {
     messageTriggerRef.current = trigger;
     setMessageKind(kind);
     setMessageError("");
+    setSubmissionError("");
     requestAnimationFrame(() => {
       messageRef.current?.scrollIntoView({ block: "center" });
       messageRef.current?.focus();
@@ -243,6 +397,7 @@ export default function ReviewRequest() {
 
   function previewMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSubmissionError("");
     if (!message.trim()) {
       setMessageError("Add a question or describe the missing context before previewing.");
       messageRef.current?.focus();
@@ -257,6 +412,42 @@ export default function ReviewRequest() {
       return;
     }
     if (messageKind) setPreview(messageKind);
+  }
+
+  async function submitCorrection() {
+    if (preview !== "correction") return;
+    setSubmittingMessage(true);
+    setSubmissionError("");
+    try {
+      const response = await fetch("/api/demo/client-submission", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "correction",
+          message,
+          source,
+          allowModel,
+        }),
+      });
+      const body = await response.json() as SubmittedConcern | SubmissionFailure;
+      if (!response.ok || !body.ok) {
+        setSubmissionError(submissionErrorMessage(body.ok ? "" : body.code));
+        return;
+      }
+      const refreshed = await fetchReviewProjection().catch(() => null);
+      if (refreshed) {
+        setProjection(refreshed);
+      }
+      setSubmittedConcern(body);
+      dialogRef.current?.close();
+      setMessageKind(null);
+      requestAnimationFrame(() => messageTriggerRef.current?.focus());
+    } catch {
+      setSubmissionError(submissionErrorMessage("SUBMISSION_RECORDING_FAILED"));
+    } finally {
+      setSubmittingMessage(false);
+    }
   }
 
   const previewTitles: Record<Preview, string> = {
@@ -469,6 +660,8 @@ export default function ReviewRequest() {
                     <span className="status-reason">
                       {terminalDecision === "decline"
                         ? "Offer declined; no payment initiated"
+                        : projection?.readiness === "ready"
+                          ? "Payment and prerequisites satisfied"
                         : projection?.readiness === "review-hold"
                           ? "Client concern requires exact decision"
                           : projection?.acceptedVersion
@@ -490,6 +683,59 @@ export default function ReviewRequest() {
                     ? `Approval recorded for ${recordedDecision.unitId}, version ${recordedDecision.version}. The agreement and payment obligation now exist; no payment was initiated.`
                     : `Decline recorded for ${recordedDecision.unitId}, version ${recordedDecision.version}. No agreement, obligation, or payment was created.`}
                 </p>
+              )}
+              {submittedConcern && (
+                <p className="action-note" role="status">
+                  Context correction {submittedConcern.concernId} was recorded against{" "}
+                  {submittedConcern.unitId}, version {submittedConcern.version}. The
+                  unit is on review hold; no agreement or payment state was changed.
+                </p>
+              )}
+              {terminalDecision === "approve" && projection?.acceptedVersion && (
+                <div className="decision-intro">
+                  <h3>Pay the approved version 2 obligation</h3>
+                  <p>
+                    PayPal Checkout is prepared only from the server-recorded obligation.
+                    Browser return alone cannot mark payment complete or release work.
+                  </p>
+                  {access?.verified && access.role === "payer" ? (
+                    <>
+                      {payment?.state === "completed" || projection.readiness === "ready" ? (
+                        <p className="action-note" role="status">
+                          Payment is authoritatively verified. Readiness: {projection.readiness}.
+                        </p>
+                      ) : payment?.state === "awaiting-capture"
+                        || payment?.state === "pending"
+                        || payment?.state === "reconciliation-required" ? (
+                          <a className="button" href="/payments/paypal/return">
+                            Continue payment verification
+                          </a>
+                        ) : (
+                          <button
+                            className="button"
+                            disabled={preparingPayment}
+                            onClick={() => void preparePayment()}
+                          >
+                            {preparingPayment
+                              ? "Preparing Checkout…"
+                              : "Prepare PayPal Checkout"}
+                          </button>
+                        )}
+                      {payment && (
+                        <p className="action-note" role="status">
+                          Payment state: {payment.state}. Readiness: {payment.readiness}.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <a className="button" href="/access-demo">
+                      Verify local payer access
+                    </a>
+                  )}
+                  {paymentError && (
+                    <p className="field-error" role="alert">{paymentError}</p>
+                  )}
+                </div>
               )}
               <div className="decision-intro">
                 <h3>You are reviewing Unit U1, version 2.</h3>
@@ -541,7 +787,11 @@ export default function ReviewRequest() {
                     <h3>{messageKind === "question" ? "Ask the studio a question" : "Supply missing agreement context"}</h3>
                     <button className="text-button" type="button" onClick={closeMessage}>Close</button>
                   </div>
-                  <p className="form-notice">Use synthetic text only. Your draft stays in this tab, is not saved to a server, and is never sent. It will be lost on refresh.</p>
+                  <p className="form-notice">
+                    {messageKind === "question"
+                      ? "Use synthetic text only. Questions can be previewed, but the current domain has no durable question contract, so no submit action is offered."
+                      : "Use synthetic text only. Your draft stays in this tab until you explicitly submit it from the preview; it will be lost on refresh before submission."}
+                  </p>
                   <label htmlFor="client-message">{messageKind === "question" ? "Your question" : "What do you believe was already agreed?"}</label>
                   <textarea id="client-message" name="message" autoComplete="off" ref={messageRef} rows={4} value={message} onChange={(event) => { setMessage(event.target.value); setMessageError(""); }} aria-invalid={Boolean(messageIssue)} aria-describedby={`draft-note${messageIssue ? " message-error" : ""}`} />
                   {messageIssue && <p className="field-error" id="message-error" role="alert">{messageIssue}</p>}
@@ -554,12 +804,19 @@ export default function ReviewRequest() {
                       <p id="source-note" className="field-help">{countFormatter.format(sourceLength)} / 10,000 characters, counted as Unicode code points. Leave this blank if the source is unavailable; no proof is required to raise a concern.</p>
                     </>
                   )}
-                  <p className="sharing-note"><strong>Recipients in the full product:</strong> Northstar Studio&apos;s authorized project team. Sharing with the studio and permission for model processing are separate.</p>
+                  <p className="sharing-note">
+                    <strong>{messageKind === "correction" ? "Recorded for review by:" : "Would be shared with:"}</strong>{" "}
+                    Northstar Studio&apos;s authorized project team.
+                    {messageKind === "correction" && " This demo records the concern but sends no notification."}
+                    {" "}Sharing with the studio and permission for model processing are separate.
+                  </p>
                   <label className="optional-consent">
                     <input type="checkbox" checked={allowModel} onChange={(event) => setAllowModel(event.target.checked)} />
                     <span>Allow an approved model to help review this context. Optional; leaving this unchecked keeps the manual-review path.</span>
                   </label>
-                  <button className="button" type="submit">Preview what would be shared</button>
+                  <button className="button" type="submit">
+                    Preview what would be shared
+                  </button>
                 </form>
               )}
             </div>
@@ -589,7 +846,11 @@ export default function ReviewRequest() {
             <p className="preview-disclaimer" id="preview-disclaimer">
               {(preview === "approve" || preview === "decline") && canRecord
                 ? "Preview only. Nothing has been recorded yet. Use the explicit record action below to submit this exact outcome."
-                : "Local prototype only. Nothing is approved, declined, sent, resolved, or charged."}
+                : preview === "correction" && canRecord && projection
+                  ? "Preview only. Nothing has been submitted yet. The explicit action below records a durable concern and review hold against the server-current unit."
+                  : preview === "question"
+                    ? "Preview only. The current domain has no durable question contract, so this question cannot be submitted."
+                    : "Local prototype only. Nothing is approved, declined, sent, resolved, or charged."}
             </p>
             <p className="dialog-version">Unit U1 / Version 2 / Northstar Studio</p>
             {preview === "approve" && <p>This outcome approves the exact USD 300.00 terms and resolves the identified layout concern only. Recording it creates agreement and obligation state. Payment remains a separate, authorized next step; approval does not mean paid, work started, or delivery accepted.</p>}
@@ -597,12 +858,38 @@ export default function ReviewRequest() {
             {preview === "decline-open" && <p>In the full product, this would decline the offer while leaving your concern open. It would not acknowledge the studio response, release correction holds, or undo existing agreements.</p>}
             {(preview === "question" || preview === "correction") && (
               <>
-                <p><strong>Would be shared with:</strong> the authorized Northstar Studio project team.</p>
+                <p>
+                  <strong>{preview === "correction" ? "Recorded for review by:" : "Would be shared with:"}</strong>{" "}
+                  the authorized Northstar Studio project team.
+                  {preview === "correction" && " This demo does not send a notification."}
+                </p>
                 <blockquote className="message-preview">{message}</blockquote>
                 {preview === "correction" && <p className="source-preview"><strong>Source:</strong> {source.trim() ? source : "Unavailable; no attachment supplied."}</p>}
                 <p><strong>Model permission:</strong> {allowModel ? "Optional processing permitted, subject to the approved service configuration." : "Not permitted. Manual review remains available."}</p>
-                <p>Only an actual, authorized submission in the full product could create a review hold. This preview creates no record or hold.</p>
+                <p>
+                  {preview === "correction"
+                    ? "Submitting this correction creates a durable concern and places the exact current unit on review hold. It does not approve terms, create or alter payment, rewrite a prior decision, or start work."
+                    : "This preview creates no record or hold. No submit action is offered because the existing domain cannot durably store a question without inventing question semantics."}
+                </p>
               </>
+            )}
+            {preview === "correction" && canRecord && projection && (
+              <button
+                className="button"
+                disabled={submittingMessage}
+                onClick={() => void submitCorrection()}
+              >
+                {submittingMessage
+                  ? "Submitting correction…"
+                  : "Submit correction and place review hold"}
+              </button>
+            )}
+            {preview === "correction" && (!canRecord || !projection) && (
+              <p className="field-help">
+                {projection
+                  ? "Verified local client-approver access is required to submit this correction."
+                  : "The server-current review basis is unavailable, so this correction cannot be submitted."}
+              </p>
             )}
             {(preview === "approve" || preview === "decline") && canRecord && !decisionRecorded && (
               <button
@@ -621,7 +908,14 @@ export default function ReviewRequest() {
               <p className="field-help">This remains a preview until local client-approver access is verified.</p>
             )}
             {recordError && <p className="field-error" role="alert">{recordError}</p>}
-            <button className="button dialog-return" onClick={() => dialogRef.current?.close()}>Return to review</button>
+            {submissionError && <p className="field-error" role="alert">{submissionError}</p>}
+            <button
+              className="button dialog-return"
+              disabled={submittingMessage}
+              onClick={() => dialogRef.current?.close()}
+            >
+              Return to review
+            </button>
           </>
         )}
       </dialog>

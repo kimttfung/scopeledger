@@ -69,12 +69,57 @@ export type AnalysisManualFallback = Readonly<{
   message: string;
 }>;
 
+export type PersistedAnalysisRun = Readonly<{
+  runId: string;
+  status: "manual-review-ready" | "candidate-ready" | "model-failed";
+  recordedAt: string;
+  sourceDigest: string;
+  providerReference: "manual" | "google-gemini";
+  modelReference: string | null;
+  humanReviewRequired: true;
+  publicationBlocked: true;
+}>;
+
+export type AnalysisReviewDisposition =
+  | "accept"
+  | "edit"
+  | "reject"
+  | "manual";
+
+export type AnalysisReviewRecord = Readonly<{
+  reviewId: string;
+  runId: string;
+  reviewedAt: string;
+  disposition: AnalysisReviewDisposition;
+  note: string;
+  runBasisDigest: string;
+  candidateBasisDigest: string | null;
+}>;
+
+export type StoredAnalysisRun = Readonly<{
+  runId: string;
+  status: PersistedAnalysisRun["status"];
+  recordedAt: string;
+  sourceDigest: string;
+  parserReference: string;
+  providerReference: PersistedAnalysisRun["providerReference"];
+  modelReference: string | null;
+  humanReviewRequired: true;
+  publicationBlocked: true;
+  candidateCount: number;
+  candidates: readonly AnalysisCandidate[];
+  missingContext: readonly string[];
+  failureCode: string | null;
+  reviews: readonly AnalysisReviewRecord[];
+}>;
+
 export type AnalysisResponse =
   | Readonly<{
     ok: true;
     code: "ANALYSIS_COMPLETE";
     parser: AnalysisParserSummary;
     model: AnalysisModelSummary;
+    run: PersistedAnalysisRun;
     manualFallback: AnalysisManualFallback;
   }>
   | Readonly<{
@@ -83,5 +128,25 @@ export type AnalysisResponse =
     message: string;
     parser?: AnalysisParserSummary;
     model?: AnalysisModelSummary;
+    run?: PersistedAnalysisRun;
     manualFallback: AnalysisManualFallback;
   }>;
+
+export type AnalysisRunsResponse = Readonly<{
+  ok: true;
+  runs: readonly StoredAnalysisRun[];
+}> | Readonly<{
+  ok: false;
+  code: string;
+  message: string;
+}>;
+
+export type AnalysisReviewResponse = Readonly<{
+  ok: true;
+  duplicate: boolean;
+  review: AnalysisReviewRecord;
+}> | Readonly<{
+  ok: false;
+  code: string;
+  message: string;
+}>;

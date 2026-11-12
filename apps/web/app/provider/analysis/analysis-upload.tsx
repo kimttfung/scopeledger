@@ -1,14 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   AnalysisCandidate,
   AnalysisEvidence,
+  AnalysisReviewDisposition,
+  AnalysisReviewResponse,
   AnalysisResponse,
+  AnalysisRunsResponse,
+  StoredAnalysisRun,
 } from "./types";
 
 const MAX_PDF_BYTES = 10_000_000;
 const numberFormatter = new Intl.NumberFormat("en-US");
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function compactDigest(value: string): string {
+  return `${value.slice(0, 12)}…${value.slice(-8)}`;
+}
 
 function isAnalysisResponse(value: unknown): value is AnalysisResponse {
   return value !== null
@@ -16,6 +28,35 @@ function isAnalysisResponse(value: unknown): value is AnalysisResponse {
     && "ok" in value
     && typeof value.ok === "boolean"
     && "manualFallback" in value;
+}
+
+function isAnalysisRunsResponse(value: unknown): value is AnalysisRunsResponse {
+  return value !== null
+    && typeof value === "object"
+    && "ok" in value
+    && typeof value.ok === "boolean"
+    && (value.ok === false || ("runs" in value && Array.isArray(value.runs)));
+}
+
+function isAnalysisReviewResponse(
+  value: unknown,
+): value is AnalysisReviewResponse {
+  return value !== null
+    && typeof value === "object"
+    && "ok" in value
+    && typeof value.ok === "boolean"
+    && (value.ok === false || "review" in value);
+}
+
+function runStatusLabel(status: StoredAnalysisRun["status"]): string {
+  switch (status) {
+    case "candidate-ready":
+      return "Candidate ready for human review";
+    case "model-failed":
+      return "Model failed; manual review basis saved";
+    case "manual-review-ready":
+      return "Parser-only manual review ready";
+  }
 }
 
 function EvidenceQuote({ evidence }: { evidence: AnalysisEvidence }) {
@@ -86,6 +127,17 @@ export default function AnalysisUpload() {
   const [submitting, setSubmitting] = useState(false);
   const [clientError, setClientError] = useState("");
   const [response, setResponse] = useState<AnalysisResponse | null>(null);
+  const [runs, setRuns] = useState<readonly StoredAnalysisRun[]>([]);
+  const [runsLoading, setRunsLoading] = useState(true);
+  const [runsError, setRunsError] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [reviewDisposition, setReviewDisposition] =
+    useState<AnalysisReviewDisposition>("manual");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewConfirmation, setReviewConfirmation] = useState("");
 
   const parser = response && "parser" in response
     ? response.parser
@@ -93,6 +145,44 @@ export default function AnalysisUpload() {
   const model = response && "model" in response
     ? response.model
     : undefined;
+  const persistedRun = response && "run" in response
+    ? response.run
+    : undefined;
+  const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? null;
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const result = await fetch("/api/analysis/runs", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const payload: unknown = await result.json();
+      if (!isAnalysisRunsResponse(payload)) throw new Error("INVALID_RESPONSE");
+      if (!payload.ok) {
+        setRunsError(`${payload.message} Reference code: ${payload.code}.`);
+        return;
+      }
+      setRunsError("");
+      setRuns(payload.runs);
+      setSelectedRunId((current) =>
+        payload.runs.some((run) => run.runId === current)
+          ? current
+          : payload.runs[0]?.runId ?? "");
+    } catch {
+      setRunsError(
+        "Persisted analysis runs could not be read. Upload remains unavailable for review until this list can be refreshed.",
+      );
+    } finally {
+      setRunsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadRuns();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadRuns]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,12 +220,78 @@ export default function AnalysisUpload() {
         throw new Error("INVALID_RESPONSE");
       }
       setResponse(payload);
+      if ("run" in payload && payload.run) {
+        setSelectedRunId(payload.run.runId);
+        await loadRuns();
+        setSelectedRunId(payload.run.runId);
+      }
     } catch {
       setClientError(
-        "The analysis response could not be read. The PDF was not persisted; retry or use manual review.",
+        "The analysis response could not be read. Persistence is unconfirmed; refresh the persisted run list before retrying.",
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewError("");
+    setReviewConfirmation("");
+    const note = reviewNote.trim();
+    if (!selectedRunId) {
+      setReviewError("Choose a persisted run before recording review.");
+      return;
+    }
+    if (!note) {
+      setReviewError("Add a provider review note before recording disposition.");
+      return;
+    }
+    if (Array.from(note).length > 2_000) {
+      setReviewError("The provider review note must be 2,000 characters or fewer.");
+      return;
+    }
+    setReviewSubmitting(true);
+    const requestId = reviewRequestId ?? crypto.randomUUID();
+    if (!reviewRequestId) setReviewRequestId(requestId);
+    try {
+      const result = await fetch("/api/analysis/reviews", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewId: requestId,
+          runId: selectedRunId,
+          disposition: reviewDisposition,
+          note,
+        }),
+      });
+      const payload: unknown = await result.json();
+      if (!isAnalysisReviewResponse(payload)) {
+        throw new Error("INVALID_RESPONSE");
+      }
+      if (!payload.ok) {
+        setReviewError(`${payload.message} Reference code: ${payload.code}.`);
+        return;
+      }
+      setReviewNote("");
+      setReviewRequestId(null);
+      setReviewConfirmation(
+        payload.duplicate
+          ? "The matching immutable provider review was already recorded."
+          : "Provider review recorded against the immutable run basis.",
+      );
+      await loadRuns();
+      setSelectedRunId(payload.review.runId);
+    } catch {
+      setReviewError(
+        "The provider review response could not be confirmed. Refresh this run before retrying the same note. No publication, pricing, consent, payment, or work authority changed.",
+      );
+    } finally {
+      setReviewSubmitting(false);
     }
   }
 
@@ -150,7 +306,8 @@ export default function AnalysisUpload() {
         <a href="#analysis-upload"><span aria-hidden="true">01</span>Upload</a>
         <a href="#analysis-extraction"><span aria-hidden="true">02</span>Extraction</a>
         <a href="#analysis-candidates"><span aria-hidden="true">03</span>Candidates</a>
-        <a href="#analysis-boundaries"><span aria-hidden="true">04</span>Boundaries</a>
+        <a href="#analysis-review"><span aria-hidden="true">04</span>Review</a>
+        <a href="#analysis-boundaries"><span aria-hidden="true">05</span>Boundaries</a>
       </nav>
 
       <main id="analysis-main">
@@ -181,7 +338,9 @@ export default function AnalysisUpload() {
             <h2 id="analysis-note-title">Manual review remains available</h2>
             <p>
               Leave Gemini processing unchecked to run the parser-only path.
-              No upload or result is persisted by this workstream.
+              The exact extracted text, source permissions, run basis, and
+              append-only human reviews are retained only in the local
+              synthetic demo schema.
             </p>
           </div>
         </aside>
@@ -270,8 +429,8 @@ export default function AnalysisUpload() {
               </button>
               <p className="action-note" aria-live="polite">
                 {submitting
-                  ? "The isolated parser is processing the upload."
-                  : "Nothing is persisted. Publication remains blocked."}
+                  ? "The isolated parser is processing the upload before an atomic persistence attempt."
+                  : "A successful extraction must be saved as an immutable run. Publication remains blocked."}
               </p>
             </form>
           </div>
@@ -313,7 +472,7 @@ export default function AnalysisUpload() {
                     <dd>{parser.extractorReference}</dd>
                   </div>
                   <div>
-                    <dt>Immutable source</dt>
+                    <dt>Sealed source version</dt>
                     <dd>
                       {parser.sourceReference.workspaceId}/
                       {parser.sourceReference.projectId}/
@@ -322,6 +481,30 @@ export default function AnalysisUpload() {
                     </dd>
                   </div>
                 </dl>
+                {persistedRun && (
+                  <dl className="status-grid">
+                    <div>
+                      <dt>Persisted run</dt>
+                      <dd>{persistedRun.runId}</dd>
+                    </div>
+                    <div>
+                      <dt>Run status</dt>
+                      <dd>{persistedRun.status}</dd>
+                    </div>
+                    <div>
+                      <dt>Source digest</dt>
+                      <dd title={persistedRun.sourceDigest}>
+                        {compactDigest(persistedRun.sourceDigest)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Recorded</dt>
+                      <dd>{dateTimeFormatter.format(
+                        new Date(persistedRun.recordedAt),
+                      )}</dd>
+                    </div>
+                  </dl>
+                )}
                 <details className="record-details">
                   <summary>Page range references</summary>
                   <div className="details-content">
@@ -398,7 +581,7 @@ export default function AnalysisUpload() {
                   </div>
                   <div>
                     <dt>Persistence</dt>
-                    <dd>None</dd>
+                    <dd>Immutable local demo run</dd>
                   </div>
                 </dl>
                 {model.candidates.map((candidate, index) => (
@@ -425,9 +608,226 @@ export default function AnalysisUpload() {
           </div>
         </section>
 
-        <section className="review-section" id="analysis-boundaries">
+        <section className="review-section" id="analysis-review">
           <h2 className="section-heading">
             <span aria-hidden="true">04</span>
+            <span>Provider review record</span>
+          </h2>
+          <div className="section-content">
+            <p className="section-lead">
+              Record an explicit human disposition against one immutable run.
+              The record does not publish a candidate or establish pricing,
+              client consent, payment, or permission to begin work.
+            </p>
+            {runsLoading && (
+              <p className="coverage-note" role="status">
+                Loading your latest persisted runs…
+              </p>
+            )}
+            {runsError && (
+              <p className="field-error" role="alert">{runsError}</p>
+            )}
+            {!runsLoading && !runsError && runs.length === 0 && (
+              <aside className="included-note">
+                <div>
+                  <h2>No persisted runs yet</h2>
+                  <p>
+                    Complete one attested extraction before recording provider
+                    review.
+                  </p>
+                </div>
+              </aside>
+            )}
+            {runs.length > 0 && (
+              <>
+                <form className="message-form" onSubmit={submitReview}>
+                  <div className="message-heading">
+                    <h3>Append human review</h3>
+                    <span className="version-tag">Immutable record</span>
+                  </div>
+                  <label htmlFor="analysis-review-run">Persisted run</label>
+                  <select
+                    id="analysis-review-run"
+                    onChange={(event) => {
+                      setSelectedRunId(event.target.value);
+                      setReviewRequestId(null);
+                      setReviewError("");
+                      setReviewConfirmation("");
+                    }}
+                    value={selectedRunId}
+                  >
+                    {runs.map((run) => (
+                      <option key={run.runId} value={run.runId}>
+                        {runStatusLabel(run.status)} / {run.runId}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedRun && (
+                    <>
+                      <dl className="terms-list">
+                        <div>
+                          <dt>Run identity</dt>
+                          <dd>{selectedRun.runId}</dd>
+                        </div>
+                        <div>
+                          <dt>Run status</dt>
+                          <dd>{runStatusLabel(selectedRun.status)}</dd>
+                        </div>
+                        <div>
+                          <dt>Candidate count</dt>
+                          <dd>
+                            {numberFormatter.format(selectedRun.candidateCount)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Publication</dt>
+                          <dd>Blocked</dd>
+                        </div>
+                        <div>
+                          <dt>Provider / model</dt>
+                          <dd>
+                            {selectedRun.providerReference}
+                            {selectedRun.modelReference
+                              ? ` / ${selectedRun.modelReference}`
+                              : ""}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Parser</dt>
+                          <dd>{selectedRun.parserReference}</dd>
+                        </div>
+                        {selectedRun.failureCode && (
+                          <div>
+                            <dt>Safe failure code</dt>
+                            <dd>{selectedRun.failureCode}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      {selectedRun.candidates.map((candidate, index) => (
+                        <CandidateReview
+                          candidate={candidate}
+                          index={index}
+                          key={candidate.claimId}
+                        />
+                      ))}
+                      {selectedRun.missingContext.length > 0 && (
+                        <details className="record-details">
+                          <summary>Missing context for this persisted run</summary>
+                          <div className="details-content">
+                            <ul>
+                              {selectedRun.missingContext.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </details>
+                      )}
+                    </>
+                  )}
+                  <label htmlFor="analysis-review-disposition">
+                    Human disposition
+                  </label>
+                  <select
+                    id="analysis-review-disposition"
+                    onChange={(event) => {
+                      setReviewDisposition(
+                        event.target.value as AnalysisReviewDisposition,
+                      );
+                      setReviewRequestId(null);
+                    }}
+                    value={reviewDisposition}
+                  >
+                    <option value="accept">
+                      Accept as provider-reviewed candidate
+                    </option>
+                    <option value="edit">
+                      Edit before any downstream preparation
+                    </option>
+                    <option value="reject">
+                      Reject this candidate basis
+                    </option>
+                    <option value="manual">
+                      Continue with manual provider review
+                    </option>
+                  </select>
+                  <label htmlFor="analysis-review-note">
+                    Provider review note
+                  </label>
+                  <textarea
+                    id="analysis-review-note"
+                    maxLength={2_000}
+                    onChange={(event) => {
+                      setReviewNote(event.target.value);
+                      setReviewRequestId(null);
+                      setReviewError("");
+                      setReviewConfirmation("");
+                    }}
+                    placeholder="State what was accepted, needs editing, was rejected, or must be handled manually."
+                    rows={5}
+                    value={reviewNote}
+                  />
+                  <p className="field-help">
+                    Required, up to 2,000 characters. The note is append-only
+                    and remains bound to the exact run and candidate digest.
+                  </p>
+                  {reviewError && (
+                    <p className="field-error" role="alert">{reviewError}</p>
+                  )}
+                  {reviewConfirmation && (
+                    <p className="coverage-note" role="status">
+                      {reviewConfirmation}
+                    </p>
+                  )}
+                  <button
+                    className="button"
+                    disabled={
+                      !selectedRunId
+                      || !reviewNote.trim()
+                      || reviewSubmitting
+                    }
+                    type="submit"
+                  >
+                    {reviewSubmitting
+                      ? "Recording provider review…"
+                      : "Record provider review"}
+                  </button>
+                  <p className="action-note">
+                    This action records review only. It cannot publish terms,
+                    set a price, record client consent, initiate payment, or
+                    authorize work.
+                  </p>
+                </form>
+                {selectedRun && selectedRun.reviews.length > 0 && (
+                  <details className="record-details" open>
+                    <summary>
+                      Recorded human reviews (
+                      {numberFormatter.format(selectedRun.reviews.length)})
+                    </summary>
+                    <div className="details-content">
+                      <ul>
+                        {selectedRun.reviews.map((review) => (
+                          <li key={review.reviewId}>
+                            <strong>{review.disposition}</strong>
+                            {" — "}
+                            {review.note}
+                            {" / "}
+                            {dateTimeFormatter.format(
+                              new Date(review.reviewedAt),
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+
+        <section className="review-section" id="analysis-boundaries">
+          <h2 className="section-heading">
+            <span aria-hidden="true">05</span>
             <span>Review boundaries</span>
           </h2>
           <div className="section-content">
@@ -448,10 +848,12 @@ export default function AnalysisUpload() {
 
       <footer className="page-footer">
         <div>
-          <strong>Ephemeral provider review.</strong>
+          <strong>Persistent synthetic provider review.</strong>
           <p>
-            The upload and result are not persisted. Server credentials never
-            enter the browser response.
+            Exact extracted text is retained only with the explicit
+            synthetic-or-permitted attestation in the local demo schema.
+            Server credentials, raw provider errors, pricing, consent, payment,
+            and commercial authority are never stored in these records.
           </p>
         </div>
       </footer>

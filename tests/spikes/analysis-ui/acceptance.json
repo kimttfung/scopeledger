@@ -1,7 +1,7 @@
 {
   "task": "IP-04-provider-ui-partial",
-  "profile": "protected-ephemeral-pdf-analysis",
-  "observedDate": "2026-11-12",
+  "profile": "protected-persistent-synthetic-pdf-analysis",
+  "observedDate": "2026-11-11",
   "result": {
     "auth0ProviderRouteProtected": true,
     "verifiedEmailRequired": true,
@@ -9,7 +9,8 @@
     "pdfLimitBytes": 10000000,
     "parserOnlyFallback": true,
     "geminiSeparateOptIn": true,
-    "persistence": false,
+    "persistence": true,
+    "appendOnlyHumanReviewRecords": true,
     "publicationEligibility": "blocked"
   },
   "evidence": [
@@ -18,11 +19,13 @@
     "The server supplies fixed source identity and permission metadata",
     "Parser-only mode never invokes Gemini",
     "Gemini candidates return exact quote polarity, uncertainty and human-review state",
-    "Provider/model failures return safe codes and preserve manual fallback"
+    "Provider/model failures return safe codes and preserve manual fallback",
+    "Successful extraction/manual/candidate paths and safe failed-model diagnostics persist atomically",
+    "Verified providers can list their latest runs and append immutable review dispositions without commercial authority",
+    "A real authenticated multipart PDF parsed through the emitted ESM worker, persisted, received a human review, and survived page reload"
   ],
   "notProved": [
-    "Persistent provider-reviewed analysis results",
-    "Human semantic approval UI and publication command",
+    "Human semantic correctness or publication command",
     "Real private-document permission",
     "Host-level parser network denial",
     "Production upload storage or malware scanning"

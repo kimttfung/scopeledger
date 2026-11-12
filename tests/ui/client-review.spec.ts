@@ -36,6 +36,34 @@ test("renders agreement and readiness facts from the PostgreSQL projection", asy
   await expect(page.locator(".status-grid")).toContainText("Not recorded");
 });
 
+test("explains verified payment readiness without claiming work started", async ({
+  page,
+}) => {
+  await page.route("**/api/demo/review", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: true,
+        unitId: "unit-u1",
+        currentVersion: 2,
+        acceptedVersion: 2,
+        readiness: "ready",
+        holds: [],
+        workStartRecorded: false,
+      }),
+    });
+  });
+  await page.reload();
+  await expect(page.locator(".status-grid")).toContainText(
+    "Payment and prerequisites satisfied",
+  );
+  await expect(page.locator(".status-grid")).toContainText("Not recorded");
+  await expect(page.locator(".status-grid")).not.toContainText(
+    "Payment or prerequisites required",
+  );
+});
+
 test("records an exact approval only after verified client access and preview", async ({
   page,
 }) => {

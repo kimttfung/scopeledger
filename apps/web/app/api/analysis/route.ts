@@ -3,18 +3,18 @@ import {
   geminiConfigFromEnvironment,
 } from "@scopeledger/gemini-adapter";
 import {
-  extractPdf,
-  sealParsedPdfSource,
-} from "@scopeledger/parser-adapter";
-import { auth0, auth0Environment } from "../../../lib/auth0";
+  PostgresAnalysisStore,
+} from "@scopeledger/db";
 import { requireSameOrigin } from "../../../lib/local-access";
-import { providerAssurance } from "../../../lib/provider-session";
+import { protocolDatabase } from "../../../lib/protocol-database";
 import {
   executeAnalysisUpload,
   responseFailure,
   validateAnalysisFormData,
   validateAnalysisRequestHeaders,
 } from "./analysis-service";
+import { verifiedProvider } from "./provider-api";
+import { analysisParserRuntime } from "./runtime-parser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,37 +42,12 @@ export async function POST(request: Request): Promise<Response> {
     ));
   }
 
-  if (!auth0Environment.configured || !auth0) {
+  const provider = await verifiedProvider();
+  if (!provider.ok) {
     return json(responseFailure(
-      503,
-      "AUTHENTICATION_UNAVAILABLE",
-      "Provider authentication is unavailable.",
-    ));
-  }
-
-  let session;
-  try {
-    session = await auth0.getSession();
-  } catch {
-    return json(responseFailure(
-      503,
-      "AUTHENTICATION_UNAVAILABLE",
-      "Provider authentication is temporarily unavailable.",
-    ));
-  }
-  if (!session) {
-    return json(responseFailure(
-      401,
-      "AUTHENTICATION_REQUIRED",
-      "Sign in before uploading a provider PDF.",
-    ));
-  }
-  const assurance = providerAssurance(session.user);
-  if (!assurance.emailVerified || !assurance.mfaVerified) {
-    return json(responseFailure(
-      403,
-      "PROVIDER_ASSURANCE_REQUIRED",
-      "Verified email and MFA assurance are required.",
+      provider.status,
+      provider.code,
+      provider.message,
     ));
   }
 
@@ -104,13 +79,28 @@ export async function POST(request: Request): Promise<Response> {
     ));
   }
 
+  const database = protocolDatabase();
+  if (!database) {
+    return json(responseFailure(
+      503,
+      "ANALYSIS_PERSISTENCE_UNAVAILABLE",
+      "Durable analysis storage is unavailable. The PDF was not processed.",
+    ));
+  }
+  const store = new PostgresAnalysisStore(database);
+  let configuredModel: string | null = null;
   return json(await executeAnalysisUpload(formValidation.value, {
-    extractPdf,
-    sealParsedPdfSource,
+    extractPdf: analysisParserRuntime.extractPdf,
+    sealParsedPdfSource: analysisParserRuntime.sealParsedPdfSource,
+    requestedBySubjectDigest: provider.subjectDigest,
+    persistRun: async (input) => {
+      await store.saveRun(input);
+    },
+    modelReference: () => configuredModel,
     generateCandidates: async (run) => {
-      const client = new GeminiCandidateClient(
-        geminiConfigFromEnvironment(),
-      );
+      const config = geminiConfigFromEnvironment();
+      configuredModel = config.model;
+      const client = new GeminiCandidateClient(config);
       return client.generateCandidateClaims(run);
     },
   }));

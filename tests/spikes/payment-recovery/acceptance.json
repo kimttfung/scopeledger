@@ -1,0 +1,25 @@
+{
+  "task": "same-attempt-payment-reconciliation",
+  "profile": "local-synthetic-paypal-sandbox",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:payment-recovery",
+  "result": {
+    "tests": 7,
+    "passed": 7,
+    "failed": 0
+  },
+  "proved": [
+    "Empty same-origin reconciliation refreshes only the server-known capture",
+    "Browser-supplied payment identity and financial fields are rejected",
+    "The real adapter path performs OAuth and capture retrieval without capture redispatch",
+    "Authoritative identity changes never reach the domain reducer",
+    "A completed sandbox attempt refreshed live as completed and ready"
+  ],
+  "notProved": [
+    "Order-to-capture discovery when no capture identity was stored",
+    "Controlled lost capture-response recovery",
+    "External refund or reversal recovery",
+    "Scheduled deployed reconciliation"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}
