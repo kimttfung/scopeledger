@@ -53,6 +53,9 @@ function dependencies(
       applicability: input.applicability,
       reissueDraftRevision:
         input.applicability === "material-change" ? 3 : null,
+      authoringUrl: input.applicability === "material-change"
+        ? "/provider/authoring?projectId=project-one&requestId=request-one&unitId=unit-one"
+        : null,
       assessedAt: "2026-11-12T10:01:00.000Z",
     }),
     ...overrides,
@@ -188,6 +191,7 @@ test("material change creates only an in-progress reissue draft", async () => {
         state: string;
         publicationRequired: boolean;
         priorConsentReused: boolean;
+        authoringUrl: string;
       };
     };
     correctionHoldCleared: boolean;
@@ -199,6 +203,8 @@ test("material change creates only an in-progress reissue draft", async () => {
     state: "in-progress",
     publicationRequired: true,
     priorConsentReused: false,
+    authoringUrl:
+      "/provider/authoring?projectId=project-one&requestId=request-one&unitId=unit-one",
   });
   assert.equal(result.correctionHoldCleared, false);
   assert.equal(result.agreementChanged, false);

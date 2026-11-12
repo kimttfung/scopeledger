@@ -96,6 +96,23 @@ export type ReviewProjection = Readonly<{
       coverage: "Confirmed published baseline";
     }>[];
   }>;
+  reissue: null | Readonly<{
+    previousVersion: number;
+    correctionContexts: readonly Readonly<{
+      statement: string;
+      claimedSourceType: string;
+      sourceAvailability: "available" | "unavailable";
+      providerResponse: string;
+      sourceReview: string;
+      responseRevision: number;
+      assessedAt: string;
+    }>[];
+    differences: readonly Readonly<{
+      field: string;
+      before: readonly string[];
+      current: readonly string[];
+    }>[];
+  }>;
   facts: Readonly<{
     decision: Readonly<{
       status: "not-recorded" | "approved" | "declined";
@@ -129,6 +146,17 @@ export type ReviewProjection = Readonly<{
     previousVersions: readonly Readonly<{
       version: number;
       publishedAt: string;
+      decision: Readonly<{
+        status: "not-recorded" | "approved" | "declined";
+        recordedAt: string | null;
+      }>;
+      obligation: null | Readonly<{
+        currency: "USD";
+        gross: string;
+        collectionStatus: "active" | "retired";
+        paymentStatus: "not-initiated" | "attempted" | "verified";
+        verifiedAt: string | null;
+      }>;
     }>[];
     additionalPreviousVersions: number;
   }>;

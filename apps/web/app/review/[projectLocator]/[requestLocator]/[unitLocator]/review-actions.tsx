@@ -29,12 +29,14 @@ type MutationSuccess =
     duplicate: boolean;
     communicationEffect: "communication-only";
     reviewHoldCreated: false;
+    draftClosed?: boolean;
   }>
   | Readonly<{
     ok: true;
     kind: "correction";
     reviewStatus: "on-hold";
     reviewHoldCreated: true;
+    draftClosed?: boolean;
   }>;
 
 type MutationFailure = Readonly<{
@@ -42,8 +44,30 @@ type MutationFailure = Readonly<{
   code: string;
 }>;
 
+type DraftProjection = Readonly<{
+  kind: MessageKind;
+  revision: number;
+  text: string;
+  sourceText: string | null;
+  allowModel: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+}>;
+
+type DraftSuccess = Readonly<{
+  ok: true;
+  draft?: DraftProjection | null;
+  duplicate?: boolean;
+  deleted?: boolean;
+}>;
+
 const TEXT_LIMIT = 10_000;
 const countFormatter = new Intl.NumberFormat("en-US");
+const draftDateFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 function mutationError(code: string): string {
   switch (code) {
@@ -75,6 +99,28 @@ function mutationError(code: string): string {
   }
 }
 
+function draftError(code: string): string {
+  switch (code) {
+    case "CLIENT_ACCESS_REQUIRED":
+    case "CLIENT_APPROVER_REQUIRED":
+    case "REVIEW_DRAFT_NOT_AUTHORIZED":
+      return "Your current verified client-approver access no longer authorizes this private draft. Reverify access, then reopen the current review.";
+    case "REVIEW_DRAFT_ORIGIN_REQUIRED":
+      return "Private drafts can be changed only from the same ScopeLedger origin.";
+    case "REVIEW_DRAFT_CONFLICT":
+      return "This draft changed in another browser. Recover the server draft before saving or deleting again.";
+    case "REVIEW_DRAFT_TEXT_LIMIT":
+      return "Draft text exceeds 10,000 Unicode code points. Nothing was truncated; shorten it before saving.";
+    case "INVALID_REVIEW_DRAFT":
+      return "The private draft is incomplete or contains unsupported control characters. Your local text remains available.";
+    case "REVIEW_STATE_CHANGED":
+    case "REVIEW_DRAFT_NOT_AVAILABLE":
+      return "The published review changed. Reload the current terms before working with this draft.";
+    default:
+      return "The private draft service is unavailable. Your local text remains in this browser.";
+  }
+}
+
 export function ReviewActions({
   review,
   styles,
@@ -87,7 +133,13 @@ export function ReviewActions({
   const [acknowledgedResponses, setAcknowledgedResponses] = useState(false);
   const [messageKind, setMessageKind] = useState<MessageKind | null>(null);
   const [text, setText] = useState("");
+  const [sourceText, setSourceText] = useState("");
   const [allowModel, setAllowModel] = useState(false);
+  const [draft, setDraft] = useState<DraftProjection | null>(null);
+  const [draftOperation, setDraftOperation] = useState<
+    "loading" | "saving" | "deleting" | null
+  >(null);
+  const [draftNotice, setDraftNotice] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -100,7 +152,22 @@ export function ReviewActions({
   const responseReady = responseCount === 0 || acknowledgedResponses;
   const decisionReady = reviewedExactVersion && authority && responseReady;
   const textLength = Array.from(text).length;
-  const textInvalid = text.trim().length === 0 || textLength > TEXT_LIMIT;
+  const sourceLength = Array.from(sourceText).length;
+  const sourceInvalid = messageKind === "correction"
+    && sourceText.trim().length > 0
+    && sourceLength > TEXT_LIMIT;
+  const textInvalid = text.trim().length === 0
+    || textLength > TEXT_LIMIT
+    || sourceInvalid;
+  const normalizedSource = messageKind === "correction"
+      && sourceText.trim().length > 0
+    ? sourceText
+    : null;
+  const draftMatchesCurrent = draft !== null
+    && draft.kind === messageKind
+    && draft.text === text
+    && draft.sourceText === normalizedSource
+    && draft.allowModel === allowModel;
 
   useEffect(() => {
     if (preview && !dialogRef.current?.open) {
@@ -112,13 +179,124 @@ export function ReviewActions({
     dialogRef.current?.close();
   }
 
+  function draftEndpoint(kind: MessageKind): string {
+    return `${review.actions.endpoint}/drafts/${kind}`;
+  }
+
+  async function recoverDraft(kind: MessageKind): Promise<void> {
+    setDraftOperation("loading");
+    setDraftNotice("");
+    setError("");
+    try {
+      const response = await fetch(draftEndpoint(kind), {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const result = await response.json() as DraftSuccess | MutationFailure;
+      if (!response.ok || !result.ok) {
+        setError(draftError(result.ok ? "" : result.code));
+        return;
+      }
+      const recovered = result.draft ?? null;
+      setDraft(recovered);
+      setText(recovered?.text ?? "");
+      setSourceText(recovered?.sourceText ?? "");
+      setAllowModel(recovered?.allowModel ?? false);
+      setDraftNotice(
+        recovered
+          ? `Recovered private ${kind} draft revision ${recovered.revision} from the server.`
+          : "No saved server draft exists for this action.",
+      );
+      requestAnimationFrame(() => textRef.current?.focus());
+    } catch {
+      setError(draftError("REVIEW_DRAFT_UNAVAILABLE"));
+    } finally {
+      setDraftOperation(null);
+    }
+  }
+
   function openMessage(kind: MessageKind) {
     setMessageKind(kind);
+    setDraft(null);
     setText("");
+    setSourceText("");
     setAllowModel(false);
     setError("");
     setSuccess("");
-    requestAnimationFrame(() => textRef.current?.focus());
+    setDraftNotice("");
+    void recoverDraft(kind);
+  }
+
+  async function saveDraft(): Promise<void> {
+    if (!messageKind || textInvalid) return;
+    setDraftOperation("saving");
+    setDraftNotice("");
+    setError("");
+    try {
+      const response = await fetch(draftEndpoint(messageKind), {
+        method: "PUT",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: draft?.revision ?? null,
+          text,
+          sourceText: normalizedSource,
+          allowModel,
+        }),
+      });
+      const result = await response.json() as DraftSuccess | MutationFailure;
+      if (!response.ok || !result.ok || !result.draft) {
+        setError(draftError(result.ok ? "" : result.code));
+        return;
+      }
+      setDraft(result.draft);
+      setDraftNotice(
+        result.duplicate
+          ? `Private draft revision ${result.draft.revision} was already current. Its seven-day inactivity expiry was refreshed.`
+          : `Private draft revision ${result.draft.revision} saved on the server.`,
+      );
+    } catch {
+      setError(draftError("REVIEW_DRAFT_UNAVAILABLE"));
+    } finally {
+      setDraftOperation(null);
+    }
+  }
+
+  async function deleteDraft(): Promise<void> {
+    if (!messageKind || !draft) return;
+    setDraftOperation("deleting");
+    setDraftNotice("");
+    setError("");
+    try {
+      const response = await fetch(draftEndpoint(messageKind), {
+        method: "DELETE",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: draft.revision }),
+      });
+      const result = await response.json() as DraftSuccess | MutationFailure;
+      if (!response.ok || !result.ok) {
+        setError(draftError(result.ok ? "" : result.code));
+        return;
+      }
+      setDraft(null);
+      setText("");
+      setSourceText("");
+      setAllowModel(false);
+      setDraftNotice(
+        result.deleted
+          ? "The private server draft was deleted."
+          : "No active private server draft remained.",
+      );
+      requestAnimationFrame(() => textRef.current?.focus());
+    } catch {
+      setError(draftError("REVIEW_DRAFT_UNAVAILABLE"));
+    } finally {
+      setDraftOperation(null);
+    }
   }
 
   function previewMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -136,6 +314,12 @@ export function ReviewActions({
     if (textLength > TEXT_LIMIT) {
       setError(mutationError("REVIEW_TEXT_LIMIT"));
       textRef.current?.focus();
+      return;
+    }
+    if (sourceInvalid) {
+      setError(
+        "The correction source exceeds 10,000 Unicode code points. Nothing was truncated; shorten it before previewing.",
+      );
       return;
     }
     if (messageKind) {
@@ -172,16 +356,42 @@ export function ReviewActions({
         );
         setRecordChanged(true);
       } else if (result.kind === "question") {
+        const draftOutcome = result.draftClosed
+          ? " The submitted exact private draft revision was deleted."
+          : draft
+            ? " A different or newer private draft remains saved."
+            : "";
         setSuccess(
           result.duplicate
-            ? "This exact question was already recorded by the current verified session. No review hold or commercial state change was created."
-            : "Question recorded as communication only. No review hold, agreement, payment, readiness, or work-start fact changed.",
+            ? `This exact question was already recorded by the current verified session. No review hold or commercial state change was created.${draftOutcome}`
+            : `Question recorded as communication only. No review hold, agreement, payment, readiness, or work-start fact changed.${draftOutcome}`,
         );
+        if (result.draftClosed) {
+          setDraft(null);
+          setDraftNotice("The submitted exact private draft revision was deleted.");
+        } else if (draft) {
+          setDraftNotice(
+            "A different or newer private draft remains saved and was not deleted.",
+          );
+        }
         setMessageKind(null);
       } else {
+        const draftOutcome = result.draftClosed
+          ? " The submitted exact private draft revision was deleted."
+          : draft
+            ? " A different or newer private draft remains saved."
+            : "";
         setSuccess(
-          "Correction recorded and the current unit was placed on review hold. Agreement, payment, and work-start facts were not changed.",
+          `Correction recorded and the current unit was placed on review hold. Agreement, payment, and work-start facts were not changed.${draftOutcome}`,
         );
+        if (result.draftClosed) {
+          setDraft(null);
+          setDraftNotice("The submitted exact private draft revision was deleted.");
+        } else if (draft) {
+          setDraftNotice(
+            "A different or newer private draft remains saved and was not deleted.",
+          );
+        }
         setRecordChanged(true);
         setMessageKind(null);
       }
@@ -200,7 +410,10 @@ export function ReviewActions({
           <h2>Record your response</h2>
           <p>
             Every action is previewed before submission and is bound to this
-            server-verified published version.
+            server-verified published version.{" "}
+            {review.reissue
+              ? "This reissue requires a fresh explicit decision; the prior version’s consent is not reused."
+              : ""}
           </p>
         </div>
         <span>
@@ -324,6 +537,12 @@ export function ReviewActions({
 
         <div className={styles.messagePanel}>
           <h3>Ask or correct</h3>
+          <p className={styles.draftPolicy}>
+            Save a private server draft for recovery in another browser.
+            Drafts expire after seven inactive days and create no submission,
+            hold, notification, model call, agreement, payment, or readiness
+            change.
+          </p>
           {!recordChanged && !messageKind && (
             <div className={styles.messageChoices}>
               <button
@@ -372,7 +591,7 @@ export function ReviewActions({
                 ref={textRef}
                 rows={5}
                 value={text}
-                maxLength={20_000}
+                disabled={draftOperation === "loading"}
                 aria-invalid={textLength > TEXT_LIMIT}
                 aria-describedby="review-message-help"
                 onChange={(event) => {
@@ -384,10 +603,37 @@ export function ReviewActions({
                 {countFormatter.format(textLength)} / 10,000 Unicode code
                 points. Text is preserved exactly.
               </p>
+              {messageKind === "correction" && (
+                <>
+                  <label htmlFor="review-correction-source">
+                    Optional source reference or exact source text
+                  </label>
+                  <textarea
+                    id="review-correction-source"
+                    rows={3}
+                    value={sourceText}
+                    disabled={draftOperation === "loading"}
+                    aria-invalid={sourceInvalid}
+                    aria-describedby="review-correction-source-help"
+                    onChange={(event) => {
+                      setSourceText(event.target.value);
+                      setError("");
+                    }}
+                  />
+                  <p
+                    id="review-correction-source-help"
+                    className={styles.fieldHelp}
+                  >
+                    {countFormatter.format(sourceLength)} / 10,000 Unicode code
+                    points. Leave empty when the source is unavailable.
+                  </p>
+                </>
+              )}
               <label className={styles.modelPermission}>
                 <input
                   type="checkbox"
                   checked={allowModel}
+                  disabled={draftOperation === "loading"}
                   onChange={(event) => setAllowModel(event.target.checked)}
                 />
                 <span>
@@ -395,17 +641,65 @@ export function ReviewActions({
                   leaving this unchecked keeps the manual-review path.
                 </span>
               </label>
-              <button
-                className={styles.primaryButton}
-                type="submit"
-                disabled={textInvalid}
-              >
-                Preview submission
-              </button>
+              <div className={styles.draftStatus} aria-live="polite">
+                {draftOperation === "loading" && (
+                  <p>Checking this private server draft…</p>
+                )}
+                {draft && draftOperation !== "loading" && (
+                  <p>
+                    Saved privately · revision {draft.revision} · expires{" "}
+                    {draftDateFormatter.format(new Date(draft.expiresAt))}{" "}
+                    after seven inactive days.
+                  </p>
+                )}
+                {!draft && draftOperation !== "loading" && draftNotice && (
+                  <p>{draftNotice}</p>
+                )}
+                {draftNotice && draft && <p>{draftNotice}</p>}
+              </div>
+              <div className={styles.draftActions}>
+                <button
+                  className={styles.primaryButton}
+                  type="submit"
+                  disabled={textInvalid || draftOperation !== null}
+                >
+                  Preview submission
+                </button>
+                <button
+                  className={styles.secondaryButton}
+                  type="button"
+                  disabled={textInvalid || draftOperation !== null}
+                  onClick={() => void saveDraft()}
+                >
+                  {draftOperation === "saving"
+                    ? "Saving…"
+                    : "Save private draft"}
+                </button>
+                {draft && (
+                  <button
+                    className={styles.textButton}
+                    type="button"
+                    disabled={draftOperation !== null}
+                    onClick={() => void deleteDraft()}
+                  >
+                    {draftOperation === "deleting"
+                      ? "Deleting…"
+                      : "Delete saved draft"}
+                  </button>
+                )}
+                <button
+                  className={styles.textButton}
+                  type="button"
+                  disabled={draftOperation !== null}
+                  onClick={() => void recoverDraft(messageKind)}
+                >
+                  Recover server draft
+                </button>
+              </div>
               <p className={styles.actionNote}>
                 {messageKind === "question"
-                  ? "A question is communication only and creates no review hold."
-                  : "A correction creates a review hold only for this unit. It does not change agreement or payment facts."}
+                  ? "Saving remains private and creates no submission. Submitting a question is communication only and creates no review hold."
+                  : "Saving remains private and creates no submission. Submitting a correction creates a review hold only for this unit; it does not change agreement or payment facts."}
               </p>
             </form>
           )}
@@ -510,6 +804,14 @@ export function ReviewActions({
                   <blockquote className={styles.messagePreview}>
                     {text}
                   </blockquote>
+                  {preview.messageKind === "correction" && normalizedSource && (
+                    <>
+                      <p><strong>Correction source supplied:</strong></p>
+                      <blockquote className={styles.messagePreview}>
+                        {normalizedSource}
+                      </blockquote>
+                    </>
+                  )}
                   <p>
                     <strong>Model permission:</strong>{" "}
                     {allowModel
@@ -529,6 +831,12 @@ export function ReviewActions({
                       kind: preview.messageKind,
                       text,
                       allowModel,
+                      ...(preview.messageKind === "correction"
+                        ? { sourceText: normalizedSource }
+                        : {}),
+                      ...(draftMatchesCurrent && draft
+                        ? { draftRevision: draft.revision }
+                        : {}),
                     })}
                   >
                     {submitting

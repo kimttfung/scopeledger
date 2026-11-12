@@ -64,6 +64,7 @@ export type ReconciliationCorrection = Readonly<{
     applicability: CorrectionApplicability;
     responseRevision: number;
     reissueDraftRevision: number | null;
+    authoringUrl: string | null;
     attribution: Attribution;
   }>;
 }>;
@@ -120,6 +121,7 @@ export type ReconciliationDependencies = Readonly<{
     responseRevision: number;
     applicability: CorrectionApplicability;
     reissueDraftRevision: number | null;
+    authoringUrl: string | null;
     assessedAt: string;
   }>>;
 }>;
@@ -492,6 +494,7 @@ export async function handleCorrectionAssessmentPost(
             state: "in-progress",
             publicationRequired: true,
             priorConsentReused: false,
+            authoringUrl: assessed.authoringUrl,
           },
       },
       correctionHoldCleared: false,

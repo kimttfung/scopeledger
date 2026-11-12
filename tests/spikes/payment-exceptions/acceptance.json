@@ -1,0 +1,33 @@
+{
+  "task": "paypal-payment-exceptions",
+  "profile": "local-authoritative-resource-contract-and-postgresql-proof",
+  "observedDate": "2026-11-12",
+  "commands": [
+    "npm run build:payment-worker",
+    "npx tsx --test tests/spikes/payment-exceptions/adapter.test.ts tests/spikes/payment-exceptions/worker.test.ts tests/spikes/payment-exceptions/webhook.test.ts tests/spikes/payment-exceptions/provider-service.test.ts tests/spikes/payment-exceptions/provider-ui.test.tsx",
+    "node --env-file=.env.local --import tsx --test --test-concurrency=1 tests/spikes/payment-exceptions/domain.test.ts tests/spikes/payment-exceptions/runtime.test.ts"
+  ],
+  "result": {
+    "tests": 15,
+    "passed": 15,
+    "failed": 0
+  },
+  "proved": [
+    "Webhook payloads remain verified immutable triggers rather than financial facts",
+    "Exact refund, parent capture and Order identity validation",
+    "Exact capture-reversal and Order identity validation",
+    "Partial, full, reversed, unknown and mismatch observations remain separate history",
+    "Duplicate and reordered triggers converge on current authoritative resources",
+    "Completed captures with no refund or reversal resources refresh as a zero-write no-op",
+    "Financial exception holds withhold readiness without rewriting capture or agreement",
+    "Actual work-start history remains truthful",
+    "No replacement attempt, inferred debt, recollection or refund initiation",
+    "Provider surface is read-only except for explicit authoritative refresh"
+  ],
+  "notProved": [
+    "Actual PayPal Sandbox refund or reversal behavior",
+    "Stable deployed webhook ingress or scheduled worker execution",
+    "Live money permissions or R1 financial operations"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}

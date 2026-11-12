@@ -29,6 +29,7 @@ export type ApprovedPaymentTarget = Readonly<{
   currency: "USD";
   gross: string;
   payer: Payer | null;
+  admittedCaptureRecovery?: boolean;
   activatedAt: string | null;
 }>;
 

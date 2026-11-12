@@ -36,6 +36,7 @@ const draft: AuthoringDraft = {
   scope: ["Implement the approved homepage."],
   exclusions: [],
   sourceReferences: [],
+  correctionContexts: [],
   draftReference: "AAAAAAAAAAAA",
   createdAt: "2026-11-12T06:02:00.000Z",
 };

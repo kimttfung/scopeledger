@@ -33,6 +33,7 @@ type ApprovedPaymentTarget = Readonly<{
     payerEpoch: number;
     nominationEpoch: number;
   }> | null;
+  admittedCaptureRecovery?: boolean;
   activatedAt: string | null;
 }>;
 

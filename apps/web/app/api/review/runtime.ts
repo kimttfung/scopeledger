@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { AccessSessionCodec } from "@scopeledger/access";
-import { PostgresAuthoringStore } from "@scopeledger/db";
+import {
+  ClientReviewDraftError,
+  PostgresAuthoringStore,
+  PostgresClientReviewDraftStore,
+} from "@scopeledger/db";
 import { OrderedConsentStore } from "@scopeledger/domain";
 import {
   localAccessRuntime,
@@ -18,11 +22,19 @@ import {
 } from "./service";
 import type {
   ReviewMutationDependencies,
+  ReviewMutationBasis,
+  ReviewMutationSession,
 } from "./mutation-service";
+import type {
+  ReviewDraftDependencies,
+  ReviewDraftKind,
+  ReviewDraftProjection,
+} from "./draft-service";
 
 export type ReviewRuntimeDependencies =
   & ReviewDependencies
-  & ReviewMutationDependencies;
+  & ReviewMutationDependencies
+  & ReviewDraftDependencies;
 
 function deterministicUuid(parts: readonly string[]): string {
   const hex = createHash("sha256")
@@ -52,6 +64,35 @@ export function reviewDependencies(): ReviewRuntimeDependencies | null {
   );
   const consentStore = new OrderedConsentStore(database);
   const authoringStore = new PostgresAuthoringStore(database);
+  const draftStore = new PostgresClientReviewDraftStore(database);
+  const draftAuthority = (
+    basis: ReviewMutationBasis,
+    session: ReviewMutationSession,
+    kind: ReviewDraftKind,
+  ) => ({
+    workspaceId: basis.workspaceId,
+    projectId: basis.projectId,
+    requestId: basis.requestId,
+    unitId: basis.unitId,
+    participantSubjectDigest: session.subject,
+    actorId: basis.actorId,
+    nominationEpoch: basis.nominationEpoch,
+    kind,
+  });
+  const draftProjection = (
+    draft: Awaited<ReturnType<typeof draftStore.read>>,
+  ): ReviewDraftProjection | null => draft
+    ? Object.freeze({
+      kind: draft.kind,
+      revision: draft.revision,
+      text: draft.exactText,
+      sourceText: draft.correctionSourceText,
+      allowModel: draft.modelProcessing === "permitted",
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+      expiresAt: draft.expiresAt.toISOString(),
+    })
+    : null;
   return Object.freeze({
     requireSameOrigin,
     readSession: async () => {
@@ -119,5 +160,49 @@ export function reviewDependencies(): ReviewRuntimeDependencies | null {
       String(basis.nominationEpoch),
       session.challengeId,
     ]),
+    readDraft: async (basis, session, kind) =>
+      draftProjection(await draftStore.read(
+        draftAuthority(basis, session, kind),
+      )),
+    saveDraft: async (basis, session, kind, input) => {
+      const saved = await draftStore.save(
+        draftAuthority(basis, session, kind),
+        {
+          expectedRevision: input.expectedRevision,
+          exactText: input.text,
+          correctionSourceText: input.sourceText,
+          modelProcessing: input.allowModel ? "permitted" : "denied",
+        },
+      );
+      return Object.freeze({
+        created: saved.created,
+        duplicate: saved.duplicate,
+        draft: draftProjection(saved.draft)!,
+      });
+    },
+    deleteDraft: (basis, session, kind, expectedRevision) =>
+      draftStore.delete(
+        draftAuthority(basis, session, kind),
+        expectedRevision,
+      ),
+    closeDraft: async (basis, session, kind, revision) => {
+      try {
+        return (await draftStore.delete(
+          draftAuthority(basis, session, kind),
+          revision,
+        )).deleted;
+      } catch (error) {
+        if (
+          error instanceof ClientReviewDraftError
+          && (
+            error.code === "DRAFT_CONFLICT"
+            || error.code === "ACCESS_DENIED"
+          )
+        ) {
+          return false;
+        }
+        throw error;
+      }
+    },
   });
 }

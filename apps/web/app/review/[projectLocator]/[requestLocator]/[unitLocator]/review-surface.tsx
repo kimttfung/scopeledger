@@ -85,6 +85,28 @@ function holdLabel(reason: string): string {
   return labels[reason] ?? "Review hold";
 }
 
+function historicalDecisionLabel(
+  status: ReviewProjection["history"]["previousVersions"][number]["decision"]["status"],
+): string {
+  return status === "approved"
+    ? "Approved"
+    : status === "declined"
+      ? "Declined"
+      : "No decision recorded";
+}
+
+function historicalPaymentLabel(
+  status: NonNullable<
+    ReviewProjection["history"]["previousVersions"][number]["obligation"]
+  >["paymentStatus"],
+): string {
+  return status === "verified"
+    ? "Payment verified"
+    : status === "attempted"
+      ? "Payment attempt retained"
+      : "No payment initiated";
+}
+
 function DefinitionRow({
   label,
   children,
@@ -239,12 +261,100 @@ export function ReviewSurface({
         </header>
 
         <nav className={styles.sectionNav} aria-label="Review sections">
+          {review.reissue && <a href="#changes">Correction and changes</a>}
           <a href="#scope">Scope and terms</a>
           <a href="#attribution">Source coverage</a>
           <a href="#facts">Current facts</a>
           <a href="#actions">Your response</a>
           <a href="#history">Version history</a>
         </nav>
+
+        {review.reissue && (
+          <section className={styles.section} id="changes">
+            <h2>Correction context and exact version changes</h2>
+            <p className={styles.sectionIntro}>
+              Version {review.reissue.previousVersion} remains immutable. This
+              reissue carries the provider&apos;s attributed assessment and
+              requires a fresh explicit approval or decline; the prior decision
+              is not reused.
+            </p>
+            <div className={styles.correctionContexts}>
+              {review.reissue.correctionContexts.map((context, index) => (
+                <article
+                  className={styles.correctionContext}
+                  key={`${context.responseRevision}-${index}`}
+                >
+                  <h3>Correction {index + 1}</h3>
+                  <blockquote>{context.statement}</blockquote>
+                  <dl className={styles.terms}>
+                    <DefinitionRow label="Claimed source">
+                      {context.claimedSourceType} ·{" "}
+                      {context.sourceAvailability}
+                    </DefinitionRow>
+                    <DefinitionRow label="Provider source review">
+                      {context.sourceReview}
+                    </DefinitionRow>
+                    <DefinitionRow label="Provider assessment">
+                      {context.providerResponse}
+                    </DefinitionRow>
+                    <DefinitionRow label="Assessment">
+                      Response revision {context.responseRevision} ·{" "}
+                      {formatDate(context.assessedAt)}
+                    </DefinitionRow>
+                  </dl>
+                </article>
+              ))}
+            </div>
+            <div className={styles.differenceTable}>
+              <table>
+                <caption>
+                  Exact changed values from version{" "}
+                  {review.reissue.previousVersion} to version{" "}
+                  {review.unit.version}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Changed field</th>
+                    <th scope="col">
+                      Before · version {review.reissue.previousVersion}
+                    </th>
+                    <th scope="col">
+                      Current · version {review.unit.version}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {review.reissue.differences.map((difference) => (
+                    <tr key={difference.field}>
+                      <th scope="row">{difference.field}</th>
+                      <td>
+                        <ul>
+                          {difference.before.map((value, index) => (
+                            <li key={`${index}-${value}`}>{value}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td>
+                        <ul>
+                          {difference.current.map((value, index) => (
+                            <li key={`${index}-${value}`}>{value}</li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {review.reissue.differences.length === 0 && (
+                <p>
+                  No client-visible field difference was detected. Fresh
+                  consent is still required because this published version
+                  carries a material correction assessment.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className={styles.section} id="scope">
           <h2>Scope and exact terms</h2>
@@ -500,8 +610,31 @@ export function ReviewSurface({
                 <ol className={styles.historyList}>
                   {priorVersions.map((version) => (
                     <li key={version.version}>
-                      Version {version.version} · published{" "}
-                      {formatDate(version.publishedAt)}
+                      <strong>
+                        Version {version.version} · published{" "}
+                        {formatDate(version.publishedAt)}
+                      </strong>
+                      <span>
+                        {historicalDecisionLabel(version.decision.status)}
+                        {version.decision.recordedAt
+                          ? ` · ${formatDate(version.decision.recordedAt)}`
+                          : ""}
+                      </span>
+                      {version.obligation && (
+                        <span>
+                          Historical obligation ·{" "}
+                          {formatMoney(version.obligation.gross)} ·{" "}
+                          {version.obligation.collectionStatus === "active"
+                            ? "still active"
+                            : "retired from collection"}{" "}
+                          · {historicalPaymentLabel(
+                            version.obligation.paymentStatus,
+                          )}
+                          {version.obligation.verifiedAt
+                            ? ` ${formatDate(version.obligation.verifiedAt)}`
+                            : ""}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ol>

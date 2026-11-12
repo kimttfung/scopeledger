@@ -56,7 +56,91 @@ function requestDto(record: ProviderRequestRecord): AuthoringRequest {
   });
 }
 
-function draftDto(record: ProviderDraftRecord): AuthoringDraft {
+type CorrectionContext = AuthoringDraft["correctionContexts"][number];
+
+function correctionClaim(value: unknown): Pick<
+  CorrectionContext,
+  "statement" | "claimedSourceType" | "sourceAvailability"
+> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {
+      statement: "Correction concern",
+      claimedSourceType: "Client-reported context",
+      sourceAvailability: "unavailable",
+    };
+  }
+  const claim = value as Record<string, unknown>;
+  const source = claim.source;
+  return {
+    statement: typeof claim.statement === "string"
+      ? claim.statement
+      : "Correction concern",
+    claimedSourceType: typeof claim.claimedSourceType === "string"
+      ? claim.claimedSourceType
+      : "Client-reported context",
+    sourceAvailability: source
+      && typeof source === "object"
+      && !Array.isArray(source)
+      && (source as Record<string, unknown>).availability === "available"
+      ? "available"
+      : "unavailable",
+  };
+}
+
+async function correctionContexts(
+  record: ProviderDraftRecord,
+): Promise<readonly CorrectionContext[]> {
+  const rows = (await sql<{
+    concern_id: string;
+    unit_version: number;
+    assessment_revision: number;
+    response_revision: number;
+    provider_response: string;
+    source_review: string;
+    assessed_at: Date;
+    claim: unknown;
+  }>`select a.concern_id,a.unit_version,a.assessment_revision,
+      a.response_revision,a.provider_response,a.source_review,a.assessed_at,
+      c.claim
+    from provider_reconciliation_assessments a
+    join corrections c
+      on c.workspace_id = a.workspace_id
+      and c.project_id = a.project_id
+      and c.id = a.concern_id
+    where a.workspace_id = ${record.workspaceId}
+      and a.project_id = ${record.projectId}
+      and a.request_id = ${record.requestId}
+      and a.unit_id = ${record.unitId}
+      and a.applicability = 'material-change'
+      and a.draft_revision <= ${record.revision}
+      and a.assessment_revision = (
+        select max(a2.assessment_revision)::integer
+        from provider_reconciliation_assessments a2
+        where a2.workspace_id = a.workspace_id
+          and a2.project_id = a.project_id
+          and a2.concern_id = a.concern_id
+      )
+    order by a.assessed_at,a.concern_id collate "C"`
+    .execute(database().kysely)).rows;
+  return Object.freeze(rows.map((row) => {
+    const claim = correctionClaim(row.claim);
+    return Object.freeze({
+      concernId: row.concern_id,
+      sourceVersion: row.unit_version,
+      assessmentRevision: row.assessment_revision,
+      responseRevision: row.response_revision,
+      ...claim,
+      providerResponse: row.provider_response,
+      sourceReview: row.source_review,
+      assessedAt: row.assessed_at.toISOString(),
+    });
+  }));
+}
+
+function draftDto(
+  record: ProviderDraftRecord,
+  contexts: readonly CorrectionContext[] = [],
+): AuthoringDraft {
   return Object.freeze({
     projectId: record.projectId,
     requestId: record.requestId,
@@ -72,6 +156,7 @@ function draftDto(record: ProviderDraftRecord): AuthoringDraft {
       displayReference: providerSourceDisplayReference(source),
       version: source.version,
     })),
+    correctionContexts: contexts,
     draftReference: record.draftDigest.slice(0, 12).toUpperCase(),
     createdAt: record.createdAt.toISOString(),
   });
@@ -197,7 +282,9 @@ export function authoringDependencies(): AuthoringDependencies {
           unitId: key.unit_id,
           revision: key.revision,
         });
-        if (draft) drafts.push(draftDto(draft));
+        if (draft) {
+          drafts.push(draftDto(draft, await correctionContexts(draft)));
+        }
       }
       return Object.freeze(drafts);
     },
@@ -282,7 +369,10 @@ export function authoringDependencies(): AuthoringDependencies {
         sourceReferences,
         authoredBy: providerActorId,
       });
-      return draftDto(saved.draft);
+      return draftDto(
+        saved.draft,
+        await correctionContexts(saved.draft),
+      );
     },
   };
 }

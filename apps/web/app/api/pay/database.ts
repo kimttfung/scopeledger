@@ -85,6 +85,7 @@ export type ApprovedPaymentTarget = Readonly<{
   currency: "USD";
   gross: string;
   payer: Payer | null;
+  admittedCaptureRecovery?: boolean;
   activatedAt: string | null;
 }>;
 
@@ -130,6 +131,7 @@ type TargetRow = Readonly<{
   payer_epoch: number | null;
   payer_continuity_epoch: number | null;
   payer_active: boolean | null;
+  admitted_capture_recovery: boolean;
   activated_at: Date | null;
 }>;
 
@@ -201,6 +203,21 @@ async function targetRows(
       nomination.epoch as payer_epoch,
       nomination.continuity_epoch as payer_continuity_epoch,
       nomination.active as payer_active,
+      exists (
+        select 1
+        from attempts recovery_attempt
+        join operations recovery_operation
+          on recovery_operation.workspace_id = recovery_attempt.workspace_id
+          and recovery_operation.project_id = recovery_attempt.project_id
+          and recovery_operation.attempt_id = recovery_attempt.id
+          and recovery_operation.kind = 'capture'
+          and recovery_operation.admitted_at is not null
+        where recovery_attempt.workspace_id = obligation.workspace_id
+          and recovery_attempt.project_id = obligation.project_id
+          and recovery_attempt.obligation_id = obligation.id
+          and recovery_attempt.initiated_by = ${payerActorId}
+          and recovery_attempt.resolved_at is null
+      ) as admitted_capture_recovery,
       (
         select history.recorded_at
         from protocol_history history
@@ -341,6 +358,7 @@ function target(
     currency: row.currency,
     gross: row.gross,
     payer: paymentPayer(row),
+    admittedCaptureRecovery: row.admitted_capture_recovery,
     activatedAt: row.activated_at?.toISOString() ?? null,
   });
 }
@@ -448,7 +466,7 @@ export async function loadPayerPaymentTarget(
   const resolved = await input.database.transaction((transaction) =>
     resolveProviderTarget(transaction, input.codec, input.locators));
   if (
-    !resolved.payer
+    (!resolved.payer && !resolved.admittedCaptureRecovery)
     || !input.codec.matchesPayer(
       input.locators.payerLocator,
       resolved.workspaceId,

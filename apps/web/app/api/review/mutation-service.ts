@@ -33,11 +33,14 @@ const requestSchema = z.discriminatedUnion("kind", [
     kind: z.literal("question"),
     text: z.string(),
     allowModel: z.boolean(),
+    draftRevision: z.number().int().positive().optional(),
   }),
   z.strictObject({
     kind: z.literal("correction"),
     text: z.string(),
+    sourceText: z.string().nullable().optional(),
     allowModel: z.boolean(),
+    draftRevision: z.number().int().positive().optional(),
   }),
 ]);
 
@@ -57,7 +60,7 @@ const protocolErrorCodes = new Set([
 const TEXT_LIMIT = 10_000;
 const invalidUnicode =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
-const invalidQuestionControl = /(?![\t\n])\p{Cc}/u;
+const invalidControl = /(?![\t\n])\p{Cc}/u;
 
 export type ReviewMutationSession = Readonly<{
   subject: string;
@@ -125,10 +128,16 @@ export type ReviewCorrectionCommand = Readonly<{
   claim: Readonly<{
     statement: string;
     claimedSourceType: string;
-    source: Readonly<{
-      availability: "unavailable";
-      explanation: string;
-    }>;
+    source:
+      | Readonly<{
+        availability: "unavailable";
+        explanation: string;
+      }>
+      | Readonly<{
+        availability: "available";
+        reference: string;
+        date: null;
+      }>;
     sharingAuthorized: true;
     modelProcessingPermitted: boolean;
   }>;
@@ -164,6 +173,12 @@ export type ReviewMutationDependencies = Readonly<{
     basis: ReviewMutationBasis,
     session: ReviewMutationSession,
   ) => string;
+  closeDraft?: (
+    basis: ReviewMutationBasis,
+    session: ReviewMutationSession,
+    kind: "question" | "correction",
+    revision: number,
+  ) => Promise<boolean>;
 }>;
 
 function json(body: object, status: number): Response {
@@ -185,11 +200,11 @@ function codePointLength(value: string): number {
   return Array.from(value).length;
 }
 
-function validText(value: string, question: boolean): boolean {
+function validText(value: string): boolean {
   return value.trim().length > 0
     && codePointLength(value) <= TEXT_LIMIT
     && !invalidUnicode.test(value)
-    && (!question || !invalidQuestionControl.test(value));
+    && !invalidControl.test(value);
 }
 
 function errorCode(error: unknown): string | null {
@@ -350,11 +365,24 @@ export async function handleReviewMutationPost(
   }
   if (
     parsed.data.kind !== "decision"
-    && !validText(parsed.data.text, parsed.data.kind === "question")
+    && !validText(parsed.data.text)
   ) {
     return json({
       ok: false,
       code: codePointLength(parsed.data.text) > TEXT_LIMIT
+        ? "REVIEW_TEXT_LIMIT"
+        : "INVALID_REVIEW_MUTATION",
+    }, 422);
+  }
+  if (
+    parsed.data.kind === "correction"
+    && parsed.data.sourceText !== undefined
+    && parsed.data.sourceText !== null
+    && !validText(parsed.data.sourceText)
+  ) {
+    return json({
+      ok: false,
+      code: codePointLength(parsed.data.sourceText) > TEXT_LIMIT
         ? "REVIEW_TEXT_LIMIT"
         : "INVALID_REVIEW_MUTATION",
     }, 422);
@@ -458,6 +486,15 @@ export async function handleReviewMutationPost(
         exactText: parsed.data.text,
         modelProcessing: parsed.data.allowModel ? "permitted" : "denied",
       });
+      const draftClosed = parsed.data.draftRevision === undefined
+          || !dependencies.closeDraft
+        ? false
+        : await dependencies.closeDraft(
+          basis,
+          session,
+          "question",
+          parsed.data.draftRevision,
+        ).catch(() => false);
       return json({
         ok: true,
         kind: "question",
@@ -468,6 +505,9 @@ export async function handleReviewMutationPost(
         paymentChanged: false,
         readinessChanged: false,
         workStartChanged: false,
+        ...(parsed.data.draftRevision === undefined
+          ? {}
+          : { draftClosed }),
       }, result.duplicate ? 200 : 201);
     } catch (error) {
       return mutationFailure(error, "question");
@@ -481,6 +521,7 @@ export async function handleReviewMutationPost(
     }, 403);
   }
   try {
+    const sourceText = parsed.data.sourceText;
     const result = await dependencies.admitCorrection(basis, {
       commandId: dependencies.createId(
         "correction-command",
@@ -501,11 +542,17 @@ export async function handleReviewMutationPost(
       claim: {
         statement: parsed.data.text,
         claimedSourceType: "Client-reported agreement context",
-        source: {
-          availability: "unavailable",
-          explanation:
-            "The client raised the correction without an available source reference.",
-        },
+        source: sourceText && sourceText.trim().length > 0
+          ? {
+            availability: "available",
+            reference: sourceText,
+            date: null,
+          }
+          : {
+            availability: "unavailable",
+            explanation:
+              "The client raised the correction without an available source reference.",
+          },
         sharingAuthorized: true,
         modelProcessingPermitted: parsed.data.allowModel,
       },
@@ -519,6 +566,15 @@ export async function handleReviewMutationPost(
         code: "REVIEW_STATE_CHANGED",
       }, 409);
     }
+    const draftClosed = parsed.data.draftRevision === undefined
+        || !dependencies.closeDraft
+      ? false
+      : await dependencies.closeDraft(
+        basis,
+        session,
+        "correction",
+        parsed.data.draftRevision,
+      ).catch(() => false);
     return json({
       ok: true,
       kind: "correction",
@@ -528,6 +584,9 @@ export async function handleReviewMutationPost(
       paymentChanged: false,
       readinessChanged: true,
       workStartChanged: false,
+      ...(parsed.data.draftRevision === undefined
+        ? {}
+        : { draftClosed }),
     }, 201);
   } catch (error) {
     return mutationFailure(error, "correction");

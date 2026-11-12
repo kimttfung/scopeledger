@@ -76,6 +76,7 @@ export const reviewFixture: ReviewProjection = {
       coverage: "Confirmed published baseline",
     }],
   },
+  reissue: null,
   facts: {
     decision: {
       status: "approved",
@@ -100,6 +101,17 @@ export const reviewFixture: ReviewProjection = {
     previousVersions: [{
       version: 1,
       publishedAt: "2026-11-09T12:00:00.000Z",
+      decision: {
+        status: "approved",
+        recordedAt: "2026-11-09T13:00:00.000Z",
+      },
+      obligation: {
+        currency: "USD",
+        gross: "450.00",
+        collectionStatus: "retired",
+        paymentStatus: "not-initiated",
+        verifiedAt: null,
+      },
     }],
     additionalPreviousVersions: 0,
   },

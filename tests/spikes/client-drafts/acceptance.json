@@ -1,0 +1,22 @@
+{
+  "task": "private-client-drafts",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:client-drafts",
+  "result": { "tests": 11, "passed": 11, "failed": 0 },
+  "proved": [
+    "Scoped question/correction drafts with exact Unicode and revisions",
+    "Cross-browser recovery for the current participant",
+    "Exact seven-inactive-day expiry",
+    "Stale revision conflicts and idempotent replay",
+    "Revoked/replaced participants cannot read predecessor drafts",
+    "Save/delete creates no submission, hold or commercial effect",
+    "Successful submission closes only the exact submitted revision"
+  ],
+  "notProved": [
+    "External notification delivery",
+    "Public multi-instance session recovery",
+    "Production retention/deletion policy"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

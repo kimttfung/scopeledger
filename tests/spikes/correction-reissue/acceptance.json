@@ -1,0 +1,29 @@
+{
+  "task": "material-correction-provider-reissue-fresh-client-consent",
+  "profile": "local-synthetic-postgresql-service-ui",
+  "observedDate": "2026-11-12",
+  "commands": [
+    "node scripts/run-ip01.mjs --suite=correction-reissue",
+    "npx tsx --test tests/spikes/correction-reissue/service.test.ts tests/spikes/correction-reissue/ui.test.tsx"
+  ],
+  "result": {
+    "tests": 6,
+    "passed": 6,
+    "failed": 0
+  },
+  "claims": [
+    "material assessment creates an immutable in-progress reissue draft linked to the exact concern and published version",
+    "linked drafts are discoverable and selectable in ordinary provider authoring",
+    "ordinary immutable draft revision, baseline, coverage, commercial preparation and publication contracts create the next version",
+    "the old version-bound mutation locator is stale after republication",
+    "the new review projects exact before/current values and carried correction context",
+    "fresh approval or decline resolves only the identified correction hold when domain rules allow",
+    "independent holds and prior decision, obligation and payment lineage survive",
+    "prior verified payment blocks changed financial republication pending external resolution without creating balances, refunds, cancellations or recollection"
+  ],
+  "notProved": [
+    "external financial resolution",
+    "public deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

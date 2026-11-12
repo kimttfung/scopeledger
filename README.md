@@ -168,6 +168,8 @@ Migration 004 adds scoped provider-created project/request identities, immutable
 
 Migration 007 adds attributed provider question responses and correction applicability assessments. Material corrections create only an immutable in-progress reissue draft; normal preparation, publication and fresh client consent remain mandatory.
 
+Migration 008 adds private project/unit/participant-scoped client drafts with immutable revisions, exact Unicode, model permission, seven-inactive-day expiry and cross-browser recovery. Draft save/delete creates no submission, hold, notification, model call or commercial effect.
+
 The protected `/provider/authoring` workspace has exercised a real synthetic project, request, private text upload, immutable draft revisions, explicit local client-authority activation, baseline confirmation, exact USD 200 payable preparation and publication. The generated opaque review recorded a real exact approval; the provider then separately activated the fixed local payer, and the opaque custom payer flow completed PayPal Sandbox approval/capture and derived `ready`. Work start remains separate and unrecorded.
 
 Prepare the ignored private local object root before source intake:
@@ -184,6 +186,8 @@ npm run test:provider-authoring
 Commercial publication, project-scoped participant activation, dynamic client review/mutations and project-record exports have separate sanitized evidence in [publication foundation](tests/spikes/publication-foundation/acceptance.json), [provider publication](tests/spikes/provider-publication/acceptance.json), [provider participants](tests/spikes/provider-participants/acceptance.json), [dynamic review](tests/spikes/dynamic-client-review/acceptance.json), [records export](tests/spikes/records-export/acceptance.json), and [provider records](tests/spikes/provider-records/acceptance.json).
 
 Custom payment, provider reconciliation and admitted-source analysis evidence is recorded in [custom payment](tests/spikes/custom-payment/acceptance.json), [provider reconciliation](tests/spikes/provider-reconciliation/acceptance.json), and [provider source analysis](tests/spikes/provider-source-analysis/acceptance.json).
+
+Participant revoke/restore, private drafts, correction reissue and financial-exception evidence is recorded in [participant lifecycle](tests/spikes/participant-lifecycle/acceptance.json), [client drafts](tests/spikes/client-drafts/acceptance.json), [correction reissue](tests/spikes/correction-reissue/acceptance.json), and [payment exceptions](tests/spikes/payment-exceptions/acceptance.json).
 
 Stop only the owned container with `npm run dev:db:stop`; the persistent volume is retained. The [acceptance manifest](tests/spikes/demo-db/acceptance.json) records the current read-only integration boundary.
 
@@ -228,6 +232,8 @@ Package and spike documentation records the public implementation boundaries and
 - Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider authoring/analysis/operations/records, private source intake, dynamic client review and printing/exports are interactive.
 - A verified local client approver can preview and record approve/decline, durable corrections and communication-only questions against both seeded and custom reviews. A separately activated and verified local payer can complete exact custom-unit Checkout/capture/reconciliation through opaque locators. No browser-provided payment identity or amount is trusted, and model output is never authority.
 - `/provider/reconciliation` records attributed question responses and correction assessments without silently clearing holds. `/provider/source-analysis` analyzes exact admitted PDF/text/Markdown bytes under stored permissions, persists human-review-required runs/reviews, and grants no downstream commercial authority.
+- `/provider/participants` explicitly revokes/restores approver or payer authority under fresh epochs without rewriting history or suppressing admitted recovery. Dynamic client question/correction drafts can be saved, recovered and deleted privately before explicit submission.
+- `/provider/payment-exceptions` treats verified refund/reversal events as triggers for authoritative reads, preserves original capture/agreement facts and withholds readiness through financial holds without recollection or manual overrides.
 - `/provider/operations` keeps readiness and actual work start separate. A verified-email/MFA provider with the current synthetic product grant may record actual start only after the server locks and rechecks readiness and holds; the completed demo remains intentionally `not recorded`.
 - Client message drafts live only in page memory and are lost on refresh before submission. Provider authoring revisions are persisted as immutable server records. Use synthetic text only.
 - Question and source fields each allow 10,000 Unicode code points. Longer input is preserved with a validation error, not silently truncated; previewing is blocked until it is corrected.

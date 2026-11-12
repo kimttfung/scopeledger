@@ -87,7 +87,7 @@
 
 .sectionNav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 16px;
   padding: 0 0 18px;
   border-bottom: 1px solid var(--color-rule);
@@ -145,6 +145,85 @@
 
 .sectionIntro {
   margin: -10px 0 22px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.correctionContexts {
+  display: grid;
+  gap: 20px;
+}
+
+.correctionContext {
+  padding: 20px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-tint);
+}
+
+.correctionContext blockquote {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 15px;
+}
+
+.correctionContext .terms {
+  margin-top: 16px;
+}
+
+.differenceTable {
+  margin-top: 28px;
+  overflow-x: auto;
+}
+
+.differenceTable table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  border-block: 1px solid var(--color-rule);
+  font-size: 13px;
+}
+
+.differenceTable caption {
+  padding-bottom: 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: left;
+}
+
+.differenceTable th,
+.differenceTable td {
+  width: 40%;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-rule);
+  border-left: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.differenceTable th:first-child,
+.differenceTable td:first-child {
+  width: 20%;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.differenceTable thead th {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.differenceTable tbody th {
+  font-weight: 650;
+}
+
+.differenceTable ul {
+  padding-left: 18px;
+}
+
+.differenceTable > p {
+  margin-top: 14px;
   color: var(--color-muted);
   font-size: 13px;
 }
@@ -434,6 +513,12 @@
   font-weight: 650;
 }
 
+.draftPolicy {
+  max-width: 62ch;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .acknowledgements {
   display: grid;
   gap: 13px;
@@ -586,8 +671,32 @@
 }
 
 .messageForm .primaryButton {
-  justify-self: start;
   margin-top: 4px;
+}
+
+.draftStatus {
+  display: grid;
+  gap: 5px;
+  min-height: 44px;
+  padding: 11px 13px;
+  border-block: 1px solid var(--color-rule);
+  background: var(--color-tint);
+  color: var(--color-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.draftActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.draftActions .textButton:disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .paymentBoundary {
@@ -697,6 +806,21 @@
   margin-top: 16px !important;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.historyList li {
+  display: grid;
+  gap: 5px;
+}
+
+.historyList strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.historyList span {
+  color: var(--color-muted);
+  font-size: 12px;
 }
 
 .historyRemainder {

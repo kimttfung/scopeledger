@@ -1,0 +1,251 @@
+.main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 42px 40px 72px;
+}
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 48px;
+  align-items: end;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.intro p {
+  max-width: 70ch;
+  margin-top: 14px;
+  color: var(--color-muted);
+}
+
+.boundary {
+  padding: 14px 16px;
+  color: var(--color-muted);
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+}
+
+.boundary strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+.register {
+  margin-top: 34px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+  padding: 18px 20px;
+  background: var(--color-tint);
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.toolbar strong {
+  display: block;
+  font-size: 15px;
+}
+
+.toolbar p {
+  max-width: 68ch;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.toolbar button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.loading {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: 34px;
+  padding: var(--space-5) 20px;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.loading span {
+  height: 12px;
+  background: var(--color-rule);
+  border-radius: var(--radius-control);
+}
+
+.loading span:nth-child(1) {
+  width: 44%;
+}
+
+.loading span:nth-child(2) {
+  width: 81%;
+}
+
+.loading span:nth-child(3) {
+  width: 63%;
+}
+
+.notice,
+.error,
+.empty {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--color-rule);
+  font-size: 13px;
+}
+
+.notice {
+  color: var(--color-ink);
+  background: var(--color-tint);
+}
+
+.error {
+  color: var(--color-error);
+  background: var(--color-surface);
+  border-color: var(--color-error);
+}
+
+.empty {
+  padding-block: 34px;
+}
+
+.empty strong {
+  display: block;
+  font-size: 15px;
+}
+
+.empty p {
+  max-width: 66ch;
+  margin-top: 6px;
+  color: var(--color-muted);
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--color-rule);
+  list-style: none;
+}
+
+.row {
+  padding: 24px 20px 28px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.rowHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.rowHeading h2 {
+  font-size: 16px;
+}
+
+.rowHeading p {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.blockingStatus,
+.observedStatus {
+  padding: 4px 8px;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.blockingStatus {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.observedStatus {
+  color: var(--color-muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.facts dt,
+.lineage span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.facts dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+.lineage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.lineage div {
+  min-width: 0;
+}
+
+.lineage code,
+.lineage strong {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.history {
+  max-width: 75ch;
+  margin-top: 18px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .main {
+    padding: 30px 20px 56px;
+  }
+
+  .intro,
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar button {
+    justify-self: start;
+  }
+
+  .rowHeading {
+    display: grid;
+  }
+
+  .facts,
+  .lineage {
+    grid-template-columns: 1fr;
+  }
+}

@@ -14,10 +14,7 @@ import {
   summarizePayPalWebhookProcessing,
 } from "@scopeledger/payment-worker";
 
-const scope = Object.freeze({
-  workspaceId: "demo-workspace",
-  projectId: "cedar-roastery",
-});
+const workspaceId = "demo-workspace";
 const receiptLimit = 100;
 
 function failureSummary() {
@@ -72,19 +69,30 @@ try {
       }));
     },
   };
-  const processor = new PayPalWebhookReceiptProcessor(
-    receiptSource,
-    new OrderedConsentStore(database),
-    new PayPalSandboxClient(config),
-  );
-  const batch = await processor.process({
-    ...scope,
-    environment: config.environment,
-    merchantId: config.merchantId,
-  }, {
-    limit: receiptLimit,
-  });
-  summary = summarizePayPalWebhookProcessing(batch);
+  const projects = (await sql`
+    select distinct project_id
+    from payment_facts
+    where workspace_id = ${workspaceId}
+    order by project_id collate "C"
+  `.execute(database.kysely)).rows;
+  const results = [];
+  for (const project of projects) {
+    const processor = new PayPalWebhookReceiptProcessor(
+      receiptSource,
+      new OrderedConsentStore(database),
+      new PayPalSandboxClient(config),
+    );
+    const batch = await processor.process({
+      workspaceId,
+      projectId: project.project_id,
+      environment: config.environment,
+      merchantId: config.merchantId,
+    }, {
+      limit: receiptLimit,
+    });
+    results.push(...batch.results);
+  }
+  summary = summarizePayPalWebhookProcessing({ results });
 } catch {
   failed = true;
 } finally {

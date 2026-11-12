@@ -1,0 +1,21 @@
+{
+  "task": "participant-lifecycle",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:participant-lifecycle",
+  "result": { "tests": 7, "passed": 7, "failed": 0 },
+  "proved": [
+    "Explicit approver and payer revoke/restore previews",
+    "Fresh epochs prevent old actor revival",
+    "Revocation blocks future admissions",
+    "Admitted capture recovery and historical attribution survive",
+    "Approver and payer authority remain separate",
+    "Cross-project and stale confirmations fail closed"
+  ],
+  "notProved": [
+    "External invitation and recovery delivery",
+    "Arbitrary real participant identities",
+    "Public deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

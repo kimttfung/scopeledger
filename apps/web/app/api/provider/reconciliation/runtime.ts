@@ -135,6 +135,7 @@ type CorrectionListRow = {
   project_id: string;
   project_display_name: string | null;
   request_id: string;
+  unit_id: string;
   request_title: string | null;
   unit_title: string;
   current_version: number;
@@ -242,6 +243,7 @@ async function listInbox(): Promise<ReconciliationInbox> {
       c.project_id,
       p.provider_display_name as project_display_name,
       c.packet_id as request_id,
+      c.origin_unit_id as unit_id,
       packet.provider_title as request_title,
       coalesce(v.snapshot->>'title','Published unit') as unit_title,
       u.current_version,
@@ -363,6 +365,9 @@ async function listInbox(): Promise<ReconciliationInbox> {
           applicability: row.assessment_applicability,
           responseRevision: row.assessment_response_revision,
           reissueDraftRevision: row.assessment_draft_revision,
+          authoringUrl: row.assessment_draft_revision === null
+            ? null
+            : `/provider/authoring?projectId=${encodeURIComponent(row.project_id)}&requestId=${encodeURIComponent(row.request_id)}&unitId=${encodeURIComponent(row.unit_id)}`,
           attribution: {
             label: "Provider" as const,
             at: row.assessed_at.toISOString(),
@@ -644,14 +649,17 @@ async function assessCorrection(input: Readonly<{
   const current = database();
   const priorRows = (await sql<{
     project_id: string;
+    request_id: string;
+    unit_id: string;
     request_digest: string;
     assessment_revision: number;
     response_revision: number;
     applicability: CorrectionApplicability;
     draft_revision: number | null;
     assessed_at: Date;
-  }>`select project_id,request_digest,assessment_revision,response_revision,
-      applicability,draft_revision,assessed_at
+  }>`select project_id,request_id,unit_id,request_digest,
+      assessment_revision,response_revision,applicability,draft_revision,
+      assessed_at
     from provider_reconciliation_assessments
     where workspace_id = ${workspaceId}
       and concern_id = ${input.concernId}
@@ -677,6 +685,9 @@ async function assessCorrection(input: Readonly<{
       responseRevision: prior.response_revision,
       applicability: prior.applicability,
       reissueDraftRevision: prior.draft_revision,
+      authoringUrl: prior.draft_revision === null
+        ? null
+        : `/provider/authoring?projectId=${encodeURIComponent(prior.project_id)}&requestId=${encodeURIComponent(prior.request_id)}&unitId=${encodeURIComponent(prior.unit_id)}`,
       assessedAt: prior.assessed_at.toISOString(),
     });
   }
@@ -712,6 +723,9 @@ async function assessCorrection(input: Readonly<{
       responseRevision: existing.response_revision,
       applicability: existing.applicability,
       reissueDraftRevision: existing.draft_revision,
+      authoringUrl: existing.draft_revision === null
+        ? null
+        : `/provider/authoring?projectId=${encodeURIComponent(basis.projectId)}&requestId=${encodeURIComponent(basis.requestId)}&unitId=${encodeURIComponent(basis.unitId)}`,
       assessedAt: existing.assessed_at.toISOString(),
     });
   }
@@ -818,6 +832,9 @@ async function assessCorrection(input: Readonly<{
         responseRevision: replay.response_revision,
         applicability: replay.applicability,
         reissueDraftRevision: replay.draft_revision,
+        authoringUrl: replay.draft_revision === null
+          ? null
+          : `/provider/authoring?projectId=${encodeURIComponent(basis.projectId)}&requestId=${encodeURIComponent(basis.requestId)}&unitId=${encodeURIComponent(basis.unitId)}`,
         assessedAt: replay.assessed_at.toISOString(),
       });
     }
@@ -916,6 +933,9 @@ async function assessCorrection(input: Readonly<{
       responseRevision: inserted.response_revision,
       applicability: inserted.applicability,
       reissueDraftRevision: inserted.draft_revision,
+      authoringUrl: inserted.draft_revision === null
+        ? null
+        : `/provider/authoring?projectId=${encodeURIComponent(basis.projectId)}&requestId=${encodeURIComponent(basis.requestId)}&unitId=${encodeURIComponent(basis.unitId)}`,
       assessedAt: inserted.assessed_at.toISOString(),
     });
   });

@@ -57,7 +57,13 @@ function ProviderAuthoringShell({
   );
 }
 
-export default async function ProviderAuthoringPage() {
+const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/u;
+
+export default async function ProviderAuthoringPage({
+  searchParams,
+}: Readonly<{
+  searchParams: Promise<Readonly<Record<string, string | string[] | undefined>>>;
+}>) {
   if (!auth0Environment.configured || !auth0) {
     return (
       <ProviderAuthoringShell
@@ -104,6 +110,23 @@ export default async function ProviderAuthoringPage() {
       </ProviderAuthoringShell>
     );
   }
+
+  const parameters = await searchParams;
+  const projectId = typeof parameters.projectId === "string"
+    && identifierPattern.test(parameters.projectId)
+    ? parameters.projectId
+    : null;
+  const requestId = typeof parameters.requestId === "string"
+    && identifierPattern.test(parameters.requestId)
+    ? parameters.requestId
+    : null;
+  const unitId = typeof parameters.unitId === "string"
+    && identifierPattern.test(parameters.unitId)
+    ? parameters.unitId
+    : null;
+  const initialSelection = projectId && requestId && unitId
+    ? { projectId, requestId, unitId }
+    : null;
 
   return (
     <>
@@ -159,7 +182,7 @@ FORM: Candidate 3 of six grounded structures, a split ledger worktable with ligh
             publication creates no decision, payment, or readiness.
           </div>
         </section>
-        <AuthoringWorkspace />
+        <AuthoringWorkspace initialSelection={initialSelection} />
       </main>
     </>
   );

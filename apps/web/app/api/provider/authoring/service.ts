@@ -37,6 +37,18 @@ export type AuthoringDraft = Readonly<{
     displayReference: string;
     version: number;
   }>[];
+  correctionContexts: readonly Readonly<{
+    concernId: string;
+    sourceVersion: number;
+    assessmentRevision: number;
+    responseRevision: number;
+    statement: string;
+    claimedSourceType: string;
+    sourceAvailability: "available" | "unavailable";
+    providerResponse: string;
+    sourceReview: string;
+    assessedAt: string;
+  }>[];
   draftReference: string;
   createdAt: string;
 }>;

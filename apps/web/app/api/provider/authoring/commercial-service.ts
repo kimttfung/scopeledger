@@ -582,6 +582,12 @@ function commercialFailure(error: unknown): Response {
         code: "COMMERCIAL_COLLECTION_CONFLICT",
         message: "Existing accepted terms require a supported amendment path.",
       }, 409);
+    case "PAYMENT_OUTCOME_UNKNOWN":
+      return json({
+        ok: false,
+        code: "COMMERCIAL_EXTERNAL_FINANCIAL_RESOLUTION_REQUIRED",
+        message: "The prior accepted obligation has payment history. The correction hold remains active; resolve the financial basis externally before publishing changed terms. ScopeLedger did not create a balance, refund, cancellation, or recollection.",
+      }, 409);
     default:
       return json({
         ok: false,

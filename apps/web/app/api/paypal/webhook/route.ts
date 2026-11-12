@@ -2,79 +2,33 @@ import {
   PayPalAdapterError,
   PayPalSandboxClient,
   payPalConfigFromEnvironment,
-  normalizeVerifiedPayPalWebhookReceipt,
 } from "@scopeledger/paypal-adapter";
 import {
   PostgresPayPalWebhookReceiptStore,
 } from "@scopeledger/db";
 import { protocolDatabase } from "../../../../lib/protocol-database";
+import {
+  handlePayPalWebhookPost,
+  type PayPalWebhookRouteDependencies,
+} from "./service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_WEBHOOK_CHARACTERS = 256_000;
-
-function requiredHeader(request: Request, name: string): string {
-  const value = request.headers.get(name);
-  if (!value) {
+function productionDependencies(): PayPalWebhookRouteDependencies {
+  const config = payPalConfigFromEnvironment();
+  const client = new PayPalSandboxClient(config);
+  const database = protocolDatabase();
+  if (!database) {
     throw new PayPalAdapterError(
-      "WEBHOOK_EVENT_INVALID",
-      `Missing required PayPal webhook header: ${name}`,
+      "WEBHOOK_STORAGE_FAILED",
+      "PostgreSQL webhook storage is unavailable",
     );
   }
-  return value;
-}
-
-function rejectionStatus(error: unknown): number {
-  if (!(error instanceof PayPalAdapterError)) return 503;
-  if (error.code === "WEBHOOK_EVENT_INVALID") return 400;
-  if (error.code === "WEBHOOK_VERIFICATION_FAILED") return 401;
-  return 503;
-}
-
-export async function POST(request: Request): Promise<Response> {
-  try {
-    const body = await request.text();
-    if (body.length === 0 || body.length > MAX_WEBHOOK_CHARACTERS) {
-      throw new PayPalAdapterError(
-        "WEBHOOK_EVENT_INVALID",
-        "PayPal webhook body was empty or exceeded the receiver limit",
-      );
-    }
-    let event: unknown;
-    try {
-      event = JSON.parse(body) as unknown;
-    } catch {
-      throw new PayPalAdapterError(
-        "WEBHOOK_EVENT_INVALID",
-        "PayPal webhook body was not valid JSON",
-      );
-    }
-
-    const config = payPalConfigFromEnvironment();
-    const client = new PayPalSandboxClient(config);
-    await client.verifyWebhook({
-      transmissionId: requiredHeader(request, "paypal-transmission-id"),
-      transmissionTime: requiredHeader(request, "paypal-transmission-time"),
-      transmissionSignature: requiredHeader(request, "paypal-transmission-sig"),
-      certificateUrl: requiredHeader(request, "paypal-cert-url"),
-      authenticationAlgorithm: requiredHeader(request, "paypal-auth-algo"),
-      event,
-    });
-
-    const receipt = normalizeVerifiedPayPalWebhookReceipt({
-      event,
-    });
-    const database = protocolDatabase();
-    if (!database) {
-      throw new PayPalAdapterError(
-        "WEBHOOK_STORAGE_FAILED",
-        "PostgreSQL webhook storage is unavailable",
-      );
-    }
-    const result = await new PostgresPayPalWebhookReceiptStore(
-      database,
-    ).insertVerified({
+  const receipts = new PostgresPayPalWebhookReceiptStore(database);
+  return {
+    verifyWebhook: (input) => client.verifyWebhook(input),
+    insertVerified: (receipt) => receipts.insertVerified({
       workspaceId: "demo-workspace",
       environment: config.environment,
       merchantId: config.merchantId,
@@ -86,25 +40,20 @@ export async function POST(request: Request): Promise<Response> {
       providerCreatedAt: receipt.providerCreatedAt,
       receivedAt: receipt.receivedAt,
       verificationReference: `paypal-postback-${receipt.eventId}`,
-    });
-    return new Response(null, { status: result.duplicate ? 200 : 204 });
+    }),
+  };
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    return await handlePayPalWebhookPost(request, productionDependencies());
   } catch (error) {
-    const status = rejectionStatus(error);
-    const code = error instanceof PayPalAdapterError ? error.code : "UNKNOWN";
-    const providerStatus = error instanceof PayPalAdapterError
-      ? error.status
-      : undefined;
-    const debugId = error instanceof PayPalAdapterError
-      ? error.debugId
-      : undefined;
-    console.error("PayPal webhook rejected", {
-      code,
-      ...(providerStatus ? { providerStatus } : {}),
-      ...(debugId ? { debugId } : {}),
+    console.error("PayPal webhook rejected before verification", {
+      code: error instanceof PayPalAdapterError ? error.code : "UNKNOWN",
     });
     return Response.json(
       { code: "PAYPAL_WEBHOOK_REJECTED" },
-      { status },
+      { status: 503 },
     );
   }
 }

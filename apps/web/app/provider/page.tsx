@@ -142,6 +142,14 @@ export default async function ProviderPage() {
         <Link href="/provider/payments">Open payer authority</Link>
       </p>
       <p>
+        <Link href="/provider/participants">Manage participant lifecycle</Link>
+      </p>
+      <p>
+        <Link href="/provider/payment-exceptions">
+          Open payment exception register
+        </Link>
+      </p>
+      <p>
         <a href="/auth/logout">Sign out</a>
       </p>
     </ProviderShell>

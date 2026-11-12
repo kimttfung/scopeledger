@@ -714,25 +714,302 @@ async function versionHistory(
   const rows = (await sql<{
     version: number;
     published_at: Date;
-  }>`select version,published_at from unit_versions
-    where workspace_id = ${target.workspaceId}
-      and project_id = ${target.projectId}
-      and unit_id = ${target.unitId}
-      and version <> ${currentVersion}
-    order by version desc
+    decision: "approve" | "decline" | null;
+    decision_recorded_at: Date | null;
+    currency: string | null;
+    gross: string | null;
+    collectible: boolean | null;
+    payment_attempted: boolean;
+    payment_verified_at: Date | null;
+  }>`select unit_versions.version,unit_versions.published_at,
+      d.decision,d.recorded_at as decision_recorded_at,
+      o.currency,o.gross,o.collectible,
+      coalesce(payment.payment_attempted,false) as payment_attempted,
+      payment.payment_verified_at
+    from unit_versions
+    left join decisions d
+      on d.workspace_id = unit_versions.workspace_id
+      and d.project_id = unit_versions.project_id
+      and d.unit_id = unit_versions.unit_id
+      and d.version = unit_versions.version
+    left join obligations o
+      on o.workspace_id = unit_versions.workspace_id
+      and o.project_id = unit_versions.project_id
+      and o.unit_id = unit_versions.unit_id
+      and o.version = unit_versions.version
+    left join lateral (
+      select
+        exists (
+          select 1 from attempts a
+          where a.workspace_id = o.workspace_id
+            and a.project_id = o.project_id
+            and a.obligation_id = o.id
+        ) as payment_attempted,
+        (
+          select max(f.verified_at)
+          from attempts a
+          join operations operation
+            on operation.workspace_id = a.workspace_id
+            and operation.project_id = a.project_id
+            and operation.attempt_id = a.id
+            and operation.kind = 'capture'
+          join payment_facts f
+            on f.workspace_id = operation.workspace_id
+            and f.project_id = operation.project_id
+            and f.operation_id = operation.id
+          where a.workspace_id = o.workspace_id
+            and a.project_id = o.project_id
+            and a.obligation_id = o.id
+        ) as payment_verified_at
+    ) payment on o.id is not null
+    where unit_versions.workspace_id = ${target.workspaceId}
+      and unit_versions.project_id = ${target.projectId}
+      and unit_versions.unit_id = ${target.unitId}
+      and unit_versions.version <> ${currentVersion}
+    order by unit_versions.version desc
     limit ${MAX_VISIBLE_HISTORY}`
     .execute(transaction)).rows;
+  for (const row of rows) {
+    if (row.currency !== null && row.currency !== "USD") {
+      throw new ReviewLoadError("STALE_RECORD");
+    }
+  }
   const previousVersionCount = total - 1;
   return Object.freeze({
     previousVersionCount,
     previousVersions: Object.freeze(rows.map((version) => Object.freeze({
       version: version.version,
       publishedAt: iso(version.published_at),
+      decision: Object.freeze({
+        status: version.decision === "approve"
+          ? "approved" as const
+          : version.decision === "decline"
+            ? "declined" as const
+            : "not-recorded" as const,
+        recordedAt: version.decision_recorded_at
+          ? iso(version.decision_recorded_at)
+          : null,
+      }),
+      obligation: version.currency === null
+        || version.gross === null
+        || version.collectible === null
+        ? null
+        : Object.freeze({
+          currency: "USD" as const,
+          gross: version.gross,
+          collectionStatus: version.collectible
+            ? "active" as const
+            : "retired" as const,
+          paymentStatus: version.payment_verified_at
+            ? "verified" as const
+            : version.payment_attempted
+              ? "attempted" as const
+              : "not-initiated" as const,
+          verifiedAt: version.payment_verified_at
+            ? iso(version.payment_verified_at)
+            : null,
+        }),
     }))),
     additionalPreviousVersions: Math.max(
       0,
       previousVersionCount - rows.length,
     ),
+  });
+}
+
+function visibleList(values: readonly string[]): readonly string[] {
+  return values.length > 0 ? Object.freeze([...values]) : Object.freeze([
+    "None recorded.",
+  ]);
+}
+
+function commercialComparison(snapshot: PublishedUnit): readonly string[] {
+  if (snapshot.treatment === "additional-waived") {
+    return Object.freeze([
+      "Treatment: additional work with payment waived",
+      `Payment: not required · ${snapshot.payment.explanation}`,
+    ]);
+  }
+  return Object.freeze([
+    "Treatment: additional payable work",
+    ...snapshot.payment.financial.lines.map((line) =>
+      `${line.description} · quantity ${line.quantity} · USD ${line.unitPrice} each · USD ${line.amount}`),
+    `Subtotal: USD ${snapshot.payment.financial.subtotal}`,
+    `Tax: ${snapshot.payment.financial.tax.treatment} · USD ${snapshot.payment.financial.tax.amount} · ${snapshot.payment.financial.tax.declaration}`,
+    `Total: USD ${snapshot.payment.financial.gross}`,
+    "Payment policy: full prepayment after fresh approval",
+  ]);
+}
+
+function comparisonFields(snapshot: PublishedUnit): readonly Readonly<{
+  field: string;
+  values: readonly string[];
+}>[] {
+  return Object.freeze([
+    { field: "Title", values: [snapshot.title] },
+    { field: "Included scope", values: visibleList(snapshot.scope) },
+    { field: "Exclusions", values: visibleList(snapshot.exclusions) },
+    { field: "Provider rationale", values: [snapshot.rationale] },
+    { field: "Delivery timing", values: [snapshot.timing.description] },
+    {
+      field: "Delivery dependencies",
+      values: visibleList(snapshot.timing.deliveryDependencies),
+    },
+    {
+      field: "Unit dependencies",
+      values: visibleList(snapshot.dependencies.map((entry) =>
+        entry.explanation)),
+    },
+    {
+      field: "Prerequisites",
+      values: visibleList(snapshot.prerequisites.map((entry) =>
+        `${entry.description} · blocks ${entry.blocks.replaceAll("-", " ")}`)),
+    },
+    {
+      field: "Source basis",
+      values: snapshot.sourceReferences.map((source, index) =>
+        `Published source ${index + 1} · version ${source.version} · ${source.availability} · ${source.locator}`),
+    },
+    {
+      field: "Confirmed baselines",
+      values: snapshot.baselineReferences.map((baseline, index) =>
+        `Confirmed baseline ${index + 1} · version ${baseline.version}`),
+    },
+    { field: "Approval condition", values: [snapshot.approver.condition] },
+    { field: "Commercial terms", values: commercialComparison(snapshot) },
+  ]);
+}
+
+function exactDifferences(
+  before: PublishedUnit,
+  current: PublishedUnit,
+): NonNullable<ReviewProjection["reissue"]>["differences"] {
+  const beforeFields = comparisonFields(before);
+  const currentFields = comparisonFields(current);
+  return Object.freeze(currentFields.flatMap((field, index) => {
+    const prior = beforeFields[index];
+    if (
+      !prior
+      || prior.field !== field.field
+      || JSON.stringify(prior.values) !== JSON.stringify(field.values)
+    ) {
+      return [Object.freeze({
+        field: field.field,
+        before: Object.freeze([...(prior?.values ?? ["Not recorded."])]),
+        current: Object.freeze([...field.values]),
+      })];
+    }
+    return [];
+  }));
+}
+
+function correctionClaim(value: unknown): Readonly<{
+  statement: string;
+  claimedSourceType: string;
+  sourceAvailability: "available" | "unavailable";
+}> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ReviewLoadError("STALE_RECORD");
+  }
+  const claim = value as Record<string, unknown>;
+  const source = claim.source;
+  if (
+    typeof claim.statement !== "string"
+    || typeof claim.claimedSourceType !== "string"
+    || !source
+    || typeof source !== "object"
+    || Array.isArray(source)
+  ) {
+    throw new ReviewLoadError("STALE_RECORD");
+  }
+  const availability = (source as Record<string, unknown>).availability;
+  if (availability !== "available" && availability !== "unavailable") {
+    throw new ReviewLoadError("STALE_RECORD");
+  }
+  return Object.freeze({
+    statement: claim.statement,
+    claimedSourceType: claim.claimedSourceType,
+    sourceAvailability: availability,
+  });
+}
+
+async function reissueProjection(
+  transaction: ProtocolTransaction,
+  target: ResolvedTarget,
+  snapshot: PublishedUnit,
+): Promise<ReviewProjection["reissue"]> {
+  if (snapshot.reconciliation.length === 0) return null;
+  const previousVersion = snapshot.version - 1;
+  if (previousVersion < 1) throw new ReviewLoadError("STALE_RECORD");
+  const previousRow = (await sql<{
+    snapshot: unknown;
+    canonical_bytes: Buffer;
+    digest: string;
+  }>`select snapshot,canonical_bytes,digest from unit_versions
+    where workspace_id = ${target.workspaceId}
+      and project_id = ${target.projectId}
+      and unit_id = ${target.unitId}
+      and version = ${previousVersion}`
+    .execute(transaction)).rows[0];
+  if (!previousRow) throw new ReviewLoadError("STALE_RECORD");
+  let previousFrozen;
+  try {
+    previousFrozen = freezePublishedUnit(previousRow.snapshot);
+  } catch {
+    throw new ReviewLoadError("MALFORMED_RECORD");
+  }
+  if (
+    previousFrozen.digest !== previousRow.digest
+    || !previousFrozen.bytes.equals(previousRow.canonical_bytes)
+    || previousFrozen.snapshot.unitId !== target.unitId
+    || previousFrozen.snapshot.version !== previousVersion
+  ) {
+    throw new ReviewLoadError("STALE_RECORD");
+  }
+
+  const concernIds = snapshot.reconciliation.map((entry) => entry.concernId);
+  const rows = (await sql<{
+    concern_id: string;
+    response_revision: number;
+    provider_response: string;
+    source_review: string;
+    assessed_at: Date;
+    claim: unknown;
+  }>`select distinct on (a.concern_id)
+      a.concern_id,a.response_revision,a.provider_response,a.source_review,
+      a.assessed_at,c.claim
+    from provider_reconciliation_assessments a
+    join corrections c
+      on c.workspace_id = a.workspace_id
+      and c.project_id = a.project_id
+      and c.id = a.concern_id
+    where a.workspace_id = ${target.workspaceId}
+      and a.project_id = ${target.projectId}
+      and a.request_id = ${target.requestId}
+      and a.unit_id = ${target.unitId}
+      and a.unit_version = ${previousVersion}
+      and a.applicability = 'material-change'
+      and a.concern_id = any(${concernIds}::text[])
+    order by a.concern_id,a.assessment_revision desc`
+    .execute(transaction)).rows;
+  if (rows.length === 0) return null;
+  const contexts = snapshot.reconciliation.map((entry) => {
+    const row = rows.find((candidate) =>
+      candidate.concern_id === entry.concernId
+      && candidate.response_revision === entry.responseRevision);
+    if (!row) throw new ReviewLoadError("STALE_RECORD");
+    return Object.freeze({
+      ...correctionClaim(row.claim),
+      providerResponse: row.provider_response,
+      sourceReview: row.source_review,
+      responseRevision: row.response_revision,
+      assessedAt: iso(row.assessed_at),
+    });
+  });
+  return Object.freeze({
+    previousVersion,
+    correctionContexts: Object.freeze(contexts),
+    differences: exactDifferences(previousFrozen.snapshot, snapshot),
   });
 }
 
@@ -803,6 +1080,11 @@ export async function loadDatabaseReview(
       target,
       snapshot,
     );
+    const reissue = await reissueProjection(
+      transaction,
+      target,
+      snapshot,
+    );
     const history = await versionHistory(
       transaction,
       target,
@@ -822,6 +1104,7 @@ export async function loadDatabaseReview(
       attribution,
       facts,
       resolutionConcerns,
+      reissue,
       history,
       payerAction,
     };
@@ -883,6 +1166,7 @@ export async function loadDatabaseReview(
     }),
     commercial: commercialTerms(loaded.snapshot),
     attribution: loaded.attribution,
+    reissue: loaded.reissue,
     facts: Object.freeze({
       ...loaded.facts,
       readiness: inspection.readiness,

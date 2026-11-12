@@ -1107,6 +1107,89 @@
   border-color: var(--color-cobalt);
 }
 
+.reissueContext {
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid var(--color-control);
+  border-radius: var(--radius-control);
+  background: var(--color-tint);
+}
+
+.reissueContextHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.reissueContextHeading span {
+  color: var(--color-cobalt-deep);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reissueContextHeading h2 {
+  margin-top: 4px;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.reissueContextHeading > strong {
+  max-width: 220px;
+  color: var(--color-cobalt-deep);
+  font-size: 12px;
+  text-align: right;
+}
+
+.reissueContextItem {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.reissueContextItem > p {
+  font-size: 14px;
+}
+
+.reissueContextItem dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 24px;
+  margin: 18px 0 0;
+}
+
+.reissueContextItem dl > div {
+  min-width: 0;
+}
+
+.reissueContextItem dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.reissueContextItem dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.reissueBoundary,
+.revisionContext {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.reissueBoundary {
+  margin-top: 18px;
+}
+
+.revisionContext {
+  margin-top: 8px;
+  color: var(--color-cobalt-deep);
+}
+
 .history {
   padding-top: 28px;
 }
@@ -1377,6 +1460,21 @@
   .draftState {
     display: inline-block;
     margin-top: 12px;
+  }
+
+  .reissueContextHeading {
+    display: block;
+  }
+
+  .reissueContextHeading > strong {
+    display: block;
+    max-width: none;
+    margin-top: 10px;
+    text-align: left;
+  }
+
+  .reissueContextItem dl {
+    grid-template-columns: 1fr;
   }
 
   .fieldGrid,

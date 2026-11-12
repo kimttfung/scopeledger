@@ -11,6 +11,8 @@
   "proved": [
     "Deterministic receipt ordering",
     "Authoritative capture retrieval before domain reduction",
+    "Authoritative refund, parent capture and Order retrieval before exception reduction",
+    "Authoritative capture-reversal and Order retrieval before exception reduction",
     "Stable duplicate and reordered processing",
     "Per-receipt failure isolation",
     "Summary output limited to counts, event types and outcomes"
@@ -19,7 +21,7 @@
     "Stable deployed HTTPS ingress",
     "Real delivery retries or provider reordering",
     "Scheduled worker operation",
-    "External refund or reversal observation"
+    "Actual external refund or reversal behavior"
   ],
   "containsProviderIdentifiersOrCredentials": false
 }

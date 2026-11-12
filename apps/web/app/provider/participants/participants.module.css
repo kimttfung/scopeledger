@@ -1,0 +1,382 @@
+.main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 42px 40px 72px;
+}
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 48px;
+  align-items: end;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.intro p {
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 15px;
+}
+
+.boundary {
+  padding: 15px 17px;
+  color: var(--color-muted);
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+}
+
+.boundary strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+.register {
+  margin-top: 36px;
+}
+
+.register + .register {
+  margin-top: 46px;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 11px 16px;
+  background: var(--color-tint);
+}
+
+.sectionHeading h2 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.sectionHeading p {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.sectionHeading > span {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 1.4fr) minmax(190px, auto);
+  gap: 28px;
+  align-items: center;
+  padding: 22px 16px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.identity {
+  min-width: 0;
+}
+
+.identity h3 {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.identity p {
+  margin-top: 5px;
+  color: var(--color-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.facts div {
+  min-width: 0;
+}
+
+.facts dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions :global(.button) {
+  min-height: 44px;
+  padding: 8px 13px;
+  font-size: 12px;
+}
+
+.noAction {
+  justify-self: end;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.empty {
+  padding: 24px 16px;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-rule);
+  font-size: 13px;
+}
+
+.feedback {
+  min-height: 26px;
+  margin-top: 24px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.dialog {
+  width: min(720px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 28px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-control);
+  border-radius: 6px;
+  overscroll-behavior: contain;
+}
+
+.dialog::backdrop {
+  background: rgb(23 29 37 / 32%);
+}
+
+.dialogHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dialogHeading h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.dialogHeading p {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.closeButton {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font-size: 28px;
+}
+
+.closeButton:hover:not(:disabled) {
+  color: var(--color-ink);
+  background: var(--color-tint);
+}
+
+.obligationHeading {
+  margin-top: 18px;
+  padding: 12px 14px;
+  color: var(--color-muted);
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.previewColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-top: 24px;
+}
+
+.previewColumns h3 {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.previewColumns ul {
+  margin: 9px 0 0;
+  padding-left: 18px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.previewColumns li + li {
+  margin-top: 6px;
+}
+
+.notice {
+  margin-top: 20px;
+  padding: 13px 15px;
+  color: var(--color-muted);
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  font-size: 12px;
+}
+
+.notice strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-rule);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.2fr);
+  }
+
+  .actions,
+  .noAction {
+    grid-column: 1 / -1;
+    justify-self: start;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .main {
+    padding: 34px 24px 60px;
+  }
+
+  .intro {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .boundary {
+    max-width: 68ch;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 17px;
+    padding-inline: 8px;
+  }
+
+  .actions,
+  .noAction {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding: 28px 20px 48px;
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+    padding-inline: 12px;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    display: grid;
+  }
+
+  .actions :global(.button) {
+    width: 100%;
+  }
+
+  .dialog {
+    padding: 20px;
+  }
+
+  .previewColumns {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .dialogActions {
+    display: grid;
+  }
+
+  .dialogActions :global(.button) {
+    width: 100%;
+  }
+}
+
+@media print {
+  .actions,
+  .dialog,
+  .feedback {
+    display: none !important;
+  }
+
+  .main {
+    max-width: none;
+    padding-inline: 0;
+  }
+}

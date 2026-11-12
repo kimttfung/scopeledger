@@ -4,6 +4,7 @@ import type { PaymentObservation } from "@scopeledger/contracts";
 import type { DispatchAdmission } from "@scopeledger/domain";
 import type {
   PayPalCaptureDetails,
+  PayPalOrderDetails,
   PayPalRefundDetails,
 } from "@scopeledger/paypal-adapter";
 import {
@@ -93,12 +94,29 @@ function refundDetails(): PayPalRefundDetails {
     refundId: "REFUND_SECRET",
     captureId: "CAPTURE_SECRET",
     status: "COMPLETED",
-    currency: "USD",
+    currency: "USD" as const,
     gross: "1.00",
     evidence: {
       kind: "synthetic-fault" as const,
       scenario: "Local webhook worker fake; no provider call occurred",
     },
+  });
+}
+
+function orderDetails(): PayPalOrderDetails {
+  return Object.freeze({
+    orderId: "ORDER_SECRET",
+    status: "COMPLETED",
+    merchantId: scope.merchantId,
+    environment: scope.environment,
+    currency: "USD",
+    gross: "1.00",
+    captures: [{
+      captureId: "CAPTURE_SECRET",
+      status: "COMPLETED",
+      currency: "USD" as const,
+      gross: "1.00",
+    }],
   });
 }
 
@@ -129,6 +147,12 @@ function unusedDomain(): PayPalWebhookDomainStore {
     async recordObservation() {
       throw new Error("Domain observation must not run");
     },
+    async paymentExceptionAdmission() {
+      throw new Error("Payment exception admission must not run");
+    },
+    async recordPaymentExceptionObservation() {
+      throw new Error("Payment exception observation must not run");
+    },
   };
 }
 
@@ -140,8 +164,20 @@ function unusedProvider(): PayPalWebhookProviderClient {
     captureObservationFromDetails() {
       throw new Error("Capture normalization must not run");
     },
+    async retrieveOrderDetails() {
+      throw new Error("Order retrieval must not run");
+    },
     async retrieveRefundDetails() {
       throw new Error("Refund retrieval must not run");
+    },
+    refundExceptionFromDetails() {
+      throw new Error("Refund exception normalization must not run");
+    },
+    captureRefundExceptionFromDetails() {
+      throw new Error("Capture refund normalization must not run");
+    },
+    captureReversalExceptionFromDetails() {
+      throw new Error("Capture reversal normalization must not run");
     },
   };
 }
@@ -170,6 +206,7 @@ test("lists receipts in deterministic provider-created, received, event order", 
 test("capture webhook status only triggers authoritative re-fetch before reduction", async () => {
   const sequence: string[] = [];
   const domain: PayPalWebhookDomainStore = {
+    ...unusedDomain(),
     async captureReconciliationAdmission(_scope, orderId) {
       sequence.push(`admission:${orderId}`);
       return captureAdmission;
@@ -180,6 +217,7 @@ test("capture webhook status only triggers authoritative re-fetch before reducti
     },
   };
   const provider: PayPalWebhookProviderClient = {
+    ...unusedProvider(),
     async retrieveCaptureDetails(captureId) {
       sequence.push(`retrieve:${captureId}`);
       return captureDetails("PENDING");
@@ -235,19 +273,85 @@ test("approved order is observed without capture or domain action", async () => 
   );
 });
 
-test("refund and capture reversal are re-fetched then retained for manual domain integration", async () => {
+test("refund and capture reversal are authoritatively re-fetched and reduced as exceptions", async () => {
   const retrieved: string[] = [];
+  const states: string[] = [];
+  const exceptionAdmission = Object.freeze({
+    operationId: captureAdmission.operationId,
+    obligationId: "obligation-secret",
+    unitId: "unit-secret",
+    orderId: "ORDER_SECRET",
+    captureId: "CAPTURE_SECRET",
+    merchantId: scope.merchantId,
+    environment: scope.environment,
+    currency: "USD" as const,
+    gross: "1.00",
+  });
+  const domain: PayPalWebhookDomainStore = {
+    ...unusedDomain(),
+    async paymentExceptionAdmission() {
+      return exceptionAdmission;
+    },
+    async recordPaymentExceptionObservation(_scope, exception) {
+      states.push(exception.state);
+      return {
+        duplicate: false,
+        holdActive: true,
+        readinessWithheld: true,
+      };
+    },
+  };
+  let captureRead = 0;
   const provider: PayPalWebhookProviderClient = {
+    ...unusedProvider(),
     async retrieveCaptureDetails(captureId) {
       retrieved.push(`capture:${captureId}`);
-      return captureDetails();
+      captureRead += 1;
+      return captureDetails(captureRead === 1 ? "COMPLETED" : "REVERSED");
     },
-    captureObservationFromDetails() {
-      throw new Error("Refund/reversal must not normalize a capture observation");
+    async retrieveOrderDetails(orderId) {
+      retrieved.push(`order:${orderId}`);
+      return orderDetails();
     },
     async retrieveRefundDetails(refundId) {
       retrieved.push(`refund:${refundId}`);
       return refundDetails();
+    },
+    refundExceptionFromDetails(admission, refund) {
+      return {
+        provider: "paypal",
+        kind: "refund",
+        state: "full-refund",
+        operationId: admission.operationId,
+        resourceId: refund.refundId,
+        orderId: admission.orderId,
+        captureId: admission.captureId,
+        merchantId: admission.merchantId,
+        environment: "sandbox",
+        currency: "USD",
+        captureGross: admission.gross,
+        affectedGross: refund.gross,
+        providerStatus: refund.status,
+        evidence: refund.evidence,
+      };
+    },
+    captureReversalExceptionFromDetails(admission, capture) {
+      return {
+        provider: "paypal",
+        kind: "capture-reversal",
+        state: "reversed",
+        operationId: admission.operationId,
+        resourceId: capture.captureId,
+        orderId: admission.orderId,
+        captureId: admission.captureId,
+        merchantId: admission.merchantId,
+        environment: "sandbox",
+        currency: "USD",
+        captureGross: admission.gross,
+        affectedGross: admission.gross,
+        providerStatus: capture.status,
+        evidence: capture.evidence,
+      };
     },
   };
   const processor = new PayPalWebhookReceiptProcessor(
@@ -258,25 +362,27 @@ test("refund and capture reversal are re-fetched then retained for manual domain
       }),
       receipt("event-reversal", "PAYMENT.CAPTURE.REVERSED"),
     ]),
-    unusedDomain(),
+    domain,
     provider,
   );
   const batch = await processor.process(scope);
   assert.deepEqual(retrieved, [
     "refund:REFUND_SECRET",
     "capture:CAPTURE_SECRET",
+    "order:ORDER_SECRET",
+    "capture:CAPTURE_SECRET",
+    "order:ORDER_SECRET",
   ]);
+  assert.deepEqual(states, ["full-refund", "reversed"]);
   assert.deepEqual(
     batch.results.map(({ outcome }) => outcome),
-    [
-      "retained-manual-domain-integration-required",
-      "retained-manual-domain-integration-required",
-    ],
+    ["payment-exception-recorded", "payment-exception-recorded"],
   );
 });
 
 test("a provider failure does not stop later receipts", async () => {
   const provider: PayPalWebhookProviderClient = {
+    ...unusedProvider(),
     async retrieveCaptureDetails() {
       throw new Error("Synthetic provider failure");
     },
@@ -307,6 +413,7 @@ test("a provider failure does not stop later receipts", async () => {
 
 test("invalid, resource-missing and unmatched outcomes are stable per receipt", async () => {
   const domain: PayPalWebhookDomainStore = {
+    ...unusedDomain(),
     async captureReconciliationAdmission() {
       throw Object.assign(new Error("No admitted capture"), {
         code: "RECONCILIATION_REQUIRED",
@@ -317,6 +424,7 @@ test("invalid, resource-missing and unmatched outcomes are stable per receipt", 
     },
   };
   const provider: PayPalWebhookProviderClient = {
+    ...unusedProvider(),
     async retrieveCaptureDetails() {
       return captureDetails();
     },
@@ -362,6 +470,7 @@ test("duplicate and reordered repeated processing converges through the normal r
   let reverse = false;
   const reduced = new Map<string, PaymentObservation>();
   const domain: PayPalWebhookDomainStore = {
+    ...unusedDomain(),
     async captureReconciliationAdmission() {
       return captureAdmission;
     },
@@ -371,6 +480,7 @@ test("duplicate and reordered repeated processing converges through the normal r
     },
   };
   const provider: PayPalWebhookProviderClient = {
+    ...unusedProvider(),
     async retrieveCaptureDetails() {
       return captureDetails("COMPLETED");
     },

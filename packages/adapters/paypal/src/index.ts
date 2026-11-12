@@ -162,6 +162,9 @@ const captureDetailsResponseSchema = z.looseObject({
   id: identifier,
   status: z.string().min(1).max(64),
   amount: amountSchema,
+  seller_receivable_breakdown: z.looseObject({
+    total_refunded_amount: amountSchema.optional(),
+  }).optional(),
   payee: z.looseObject({ merchant_id: identifier }),
   supplementary_data: z.looseObject({
     related_ids: z.looseObject({ order_id: identifier }),
@@ -175,6 +178,7 @@ const captureDetailsSchema = z.strictObject({
   merchantId: identifier,
   currency: z.literal("USD"),
   gross: moneySchema,
+  refundedGross: moneySchema.optional(),
   evidence: observationSchema.shape.evidence,
 });
 
@@ -214,6 +218,47 @@ const refundDetailsSchema = z.strictObject({
 
 export type PayPalRefundDetails = Readonly<
   z.infer<typeof refundDetailsSchema>
+>;
+
+const paymentExceptionAdmissionSchema = z.looseObject({
+  operationId: commandIdentifier,
+  orderId: identifier,
+  captureId: identifier,
+  merchantId: identifier,
+  environment: z.literal("sandbox"),
+  currency: z.literal("USD"),
+  gross: moneySchema,
+});
+
+export type PayPalPaymentExceptionAdmission = Readonly<
+  z.infer<typeof paymentExceptionAdmissionSchema>
+>;
+
+const paymentExceptionDetailsSchema = z.strictObject({
+  provider: z.literal("paypal"),
+  kind: z.enum(["refund", "capture-reversal"]),
+  state: z.enum([
+    "partial-refund",
+    "full-refund",
+    "reversed",
+    "failed",
+    "unknown",
+  ]),
+  operationId: commandIdentifier,
+  resourceId: identifier,
+  orderId: identifier,
+  captureId: identifier,
+  merchantId: identifier,
+  environment: z.literal("sandbox"),
+  currency: z.literal("USD"),
+  captureGross: moneySchema,
+  affectedGross: moneySchema.nullable(),
+  providerStatus: z.string().min(1).max(128),
+  evidence: observationSchema.shape.evidence,
+});
+
+export type PayPalPaymentExceptionDetails = Readonly<
+  z.infer<typeof paymentExceptionDetailsSchema>
 >;
 
 const purchaseUnitSchema = z.looseObject({
@@ -263,6 +308,11 @@ const webhookVerificationInputSchema = z.strictObject({
 });
 
 export type PayPalWebhookVerificationInput = z.infer<typeof webhookVerificationInputSchema>;
+
+function moneyCents(value: string): number {
+  const [whole = "0", fractional = "00"] = value.split(".");
+  return Number(whole) * 100 + Number(fractional);
+}
 
 export const PAYPAL_SANDBOX_WEBHOOK_EVENT_TYPES = Object.freeze([
   "CHECKOUT.ORDER.APPROVED",
@@ -631,6 +681,12 @@ export class PayPalSandboxClient {
       merchantId: capture.payee.merchant_id,
       currency: capture.amount.currency_code,
       gross: capture.amount.value,
+      ...(capture.seller_receivable_breakdown?.total_refunded_amount
+        ? {
+            refundedGross:
+              capture.seller_receivable_breakdown.total_refunded_amount.value,
+          }
+        : {}),
       evidence: this.captureEvidence(capture.id),
     }));
   }
@@ -854,6 +910,133 @@ export class PayPalSandboxClient {
     }));
   }
 
+  refundExceptionFromDetails(
+    admissionInput: unknown,
+    refundInput: unknown,
+    captureInput: unknown,
+    orderInput: unknown,
+  ): PayPalPaymentExceptionDetails {
+    const admission = parseInput(
+      paymentExceptionAdmissionSchema,
+      admissionInput,
+    );
+    const refund = parseInput(refundDetailsSchema, refundInput);
+    const capture = parseInput(captureDetailsSchema, captureInput);
+    const order = parseInput(orderDetailsSchema, orderInput);
+    this.assertPaymentExceptionBasis(admission, capture, order);
+    if (refund.captureId !== admission.captureId) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Retrieved PayPal refund did not belong to the settled capture",
+      );
+    }
+    if (refund.currency !== admission.currency) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Retrieved PayPal refund currency did not match the settled capture",
+      );
+    }
+    if (moneyCents(refund.gross) > moneyCents(admission.gross)) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Retrieved PayPal refund exceeded the settled capture amount",
+      );
+    }
+    const providerStatus = refund.status.toUpperCase();
+    const state = providerStatus === "COMPLETED"
+      ? refund.gross === admission.gross
+        ? "full-refund"
+        : "partial-refund"
+      : providerStatus === "FAILED" || providerStatus === "CANCELLED"
+        ? "failed"
+        : "unknown";
+    return this.paymentExceptionDetails(admission, {
+      kind: "refund",
+      state,
+      resourceId: refund.refundId,
+      providerStatus: refund.status,
+      affectedGross: state === "partial-refund" || state === "full-refund"
+        ? refund.gross
+        : null,
+      evidence: refund.evidence,
+    });
+  }
+
+  captureRefundExceptionFromDetails(
+    admissionInput: unknown,
+    captureInput: unknown,
+    orderInput: unknown,
+  ): PayPalPaymentExceptionDetails {
+    const admission = parseInput(
+      paymentExceptionAdmissionSchema,
+      admissionInput,
+    );
+    const capture = parseInput(captureDetailsSchema, captureInput);
+    const order = parseInput(orderDetailsSchema, orderInput);
+    this.assertPaymentExceptionBasis(admission, capture, order);
+    const providerStatus = capture.status.toUpperCase();
+    let state: PayPalPaymentExceptionDetails["state"] = "unknown";
+    let affectedGross: string | null = null;
+    if (providerStatus === "REFUNDED") {
+      if (
+        capture.refundedGross
+        && capture.refundedGross !== admission.gross
+      ) {
+        throw new PayPalAdapterError(
+          "FINANCIAL_MISMATCH",
+          "Fully refunded PayPal capture reported an inconsistent refunded amount",
+        );
+      }
+      state = "full-refund";
+      affectedGross = admission.gross;
+    } else if (
+      providerStatus === "PARTIALLY_REFUNDED"
+      && capture.refundedGross
+    ) {
+      const refundedCents = moneyCents(capture.refundedGross);
+      const captureCents = moneyCents(admission.gross);
+      if (refundedCents >= captureCents) {
+        throw new PayPalAdapterError(
+          "FINANCIAL_MISMATCH",
+          "Partially refunded PayPal capture reported an invalid refunded amount",
+        );
+      }
+      state = "partial-refund";
+      affectedGross = capture.refundedGross;
+    }
+    return this.paymentExceptionDetails(admission, {
+      kind: "refund",
+      state,
+      resourceId: capture.captureId,
+      providerStatus: capture.status,
+      affectedGross,
+      evidence: capture.evidence,
+    });
+  }
+
+  captureReversalExceptionFromDetails(
+    admissionInput: unknown,
+    captureInput: unknown,
+    orderInput: unknown,
+  ): PayPalPaymentExceptionDetails {
+    const admission = parseInput(
+      paymentExceptionAdmissionSchema,
+      admissionInput,
+    );
+    const capture = parseInput(captureDetailsSchema, captureInput);
+    const order = parseInput(orderDetailsSchema, orderInput);
+    this.assertPaymentExceptionBasis(admission, capture, order);
+    const reversed = capture.status.toUpperCase() === "REVERSED";
+    return this.paymentExceptionDetails(admission, {
+      kind: "capture-reversal",
+      state: reversed ? "reversed" : "unknown",
+      resourceId: capture.captureId,
+      providerStatus: capture.status,
+      affectedGross: reversed ? admission.gross : null,
+      evidence: capture.evidence,
+    });
+  }
+
   async verifyWebhook(input: unknown): Promise<true> {
     if (!this.config.webhookId) {
       throw new PayPalAdapterError(
@@ -889,6 +1072,96 @@ export class PayPalSandboxClient {
       );
     }
     return true;
+  }
+
+  private assertPaymentExceptionBasis(
+    admission: PayPalPaymentExceptionAdmission,
+    capture: PayPalCaptureDetails,
+    order: PayPalOrderDetails,
+  ): void {
+    if (
+      capture.captureId !== admission.captureId
+      || capture.orderId !== admission.orderId
+      || order.orderId !== admission.orderId
+    ) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Retrieved PayPal resources did not preserve the settled Order and capture linkage",
+      );
+    }
+    if (
+      capture.merchantId !== admission.merchantId
+      || order.merchantId !== admission.merchantId
+      || order.environment !== admission.environment
+    ) {
+      throw new PayPalAdapterError(
+        "MERCHANT_MISMATCH",
+        "Retrieved PayPal resources did not match the settled merchant environment",
+      );
+    }
+    if (
+      capture.currency !== admission.currency
+      || capture.gross !== admission.gross
+      || order.currency !== admission.currency
+      || order.gross !== admission.gross
+    ) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Retrieved PayPal resources did not match the settled currency and gross amount",
+      );
+    }
+    const linkedCaptures = order.captures.filter(
+      (candidate) => candidate.captureId === admission.captureId,
+    );
+    const linkedCapture = linkedCaptures[0];
+    if (
+      order.captures.length !== 1
+      || linkedCaptures.length !== 1
+      || !linkedCapture
+    ) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Retrieved PayPal Order did not identify exactly the settled capture",
+      );
+    }
+    if (
+      linkedCapture.currency !== admission.currency
+      || linkedCapture.gross !== admission.gross
+    ) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Order-linked PayPal capture did not match the settled financial basis",
+      );
+    }
+  }
+
+  private paymentExceptionDetails(
+    admission: PayPalPaymentExceptionAdmission,
+    input: Readonly<{
+      kind: "refund" | "capture-reversal";
+      state: PayPalPaymentExceptionDetails["state"];
+      resourceId: string;
+      providerStatus: string;
+      affectedGross: string | null;
+      evidence: PaymentObservation["evidence"];
+    }>,
+  ): PayPalPaymentExceptionDetails {
+    return Object.freeze(parseInput(paymentExceptionDetailsSchema, {
+      provider: "paypal",
+      kind: input.kind,
+      state: input.state,
+      operationId: admission.operationId,
+      resourceId: input.resourceId,
+      orderId: admission.orderId,
+      captureId: admission.captureId,
+      merchantId: admission.merchantId,
+      environment: admission.environment,
+      currency: admission.currency,
+      captureGross: admission.gross,
+      affectedGross: input.affectedGross,
+      providerStatus: input.providerStatus,
+      evidence: input.evidence,
+    }));
   }
 
   private parseAdmission(

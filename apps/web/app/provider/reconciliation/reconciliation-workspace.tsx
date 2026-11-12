@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { ReconciliationInbox } from "../../api/provider/reconciliation/service";
 import {
   CorrectionForm,
@@ -200,7 +201,12 @@ export default function ReconciliationWorkspace() {
                         In-progress reissue draft revision{" "}
                         {correction.latestAssessment.reissueDraftRevision};
                         normal commercial preparation and publication remain
-                        required.
+                        required.{" "}
+                        {correction.latestAssessment.authoringUrl ? (
+                          <Link href={correction.latestAssessment.authoringUrl}>
+                            Open this draft in provider authoring
+                          </Link>
+                        ) : null}
                       </p>
                     ) : null}
                   </div>

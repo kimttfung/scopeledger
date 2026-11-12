@@ -111,7 +111,15 @@ async function jsonResponse<T extends Readonly<{ ok: true }>>(
   return body as T;
 }
 
-export default function AuthoringWorkspace() {
+export default function AuthoringWorkspace({
+  initialSelection = null,
+}: Readonly<{
+  initialSelection?: Readonly<{
+    projectId: string;
+    requestId: string;
+    unitId: string;
+  }> | null;
+}>) {
   const [projects, setProjects] = useState<readonly AuthoringProject[]>([]);
   const [requests, setRequests] = useState<readonly AuthoringRequest[]>([]);
   const [drafts, setDrafts] = useState<readonly AuthoringDraft[]>([]);
@@ -153,6 +161,7 @@ export default function AuthoringWorkspace() {
   );
   const history = drafts.filter((draft) => draft.unitId === unitId);
   const latest = history.at(-1) ?? null;
+  const selectedCorrectionContexts = latest?.correctionContexts ?? [];
   const modelPermissionMatchesReview =
     (modelProcessing === "permitted")
     === (modelInputReviewStatus === "cleared");
@@ -250,15 +259,92 @@ export default function AuthoringWorkspace() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/provider/authoring/projects", {
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { Accept: "application/json" },
-    })
-      .then((response) => jsonResponse<ProjectList>(response))
-      .then((body) => {
-        if (active) setProjects(body.projects);
-      })
+    void (async () => {
+      const projectResponse = await fetch("/api/provider/authoring/projects", {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const projectBody = await jsonResponse<ProjectList>(projectResponse);
+      if (!active) return;
+      setProjects(projectBody.projects);
+      if (
+        !initialSelection
+        || !projectBody.projects.some(
+          (item) => item.projectId === initialSelection.projectId,
+        )
+      ) {
+        return;
+      }
+      setProjectId(initialSelection.projectId);
+      const requestResponse = await fetch(
+        `/api/provider/authoring/projects/${encodeURIComponent(initialSelection.projectId)}/requests`,
+        {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const requestBody = await jsonResponse<RequestList>(requestResponse);
+      if (!active) return;
+      setRequests(requestBody.requests);
+      if (!requestBody.requests.some(
+        (item) => item.requestId === initialSelection.requestId,
+      )) {
+        return;
+      }
+      setRequestId(initialSelection.requestId);
+      const [sourceResponse, draftResponse] = await Promise.all([
+        fetch(
+          `/api/provider/sources?projectId=${encodeURIComponent(initialSelection.projectId)}&requestId=${encodeURIComponent(initialSelection.requestId)}`,
+          {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          },
+        ),
+        fetch(
+          `/api/provider/authoring/projects/${encodeURIComponent(initialSelection.projectId)}/requests/${encodeURIComponent(initialSelection.requestId)}/drafts`,
+          {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          },
+        ),
+      ]);
+      const [sourceBody, draftBody] = await Promise.all([
+        jsonResponse<SourceList>(sourceResponse),
+        jsonResponse<DraftList>(draftResponse),
+      ]);
+      if (!active) return;
+      setSources(sourceBody.sources);
+      setDrafts(draftBody.drafts);
+      const selectedUnit = draftBody.drafts.some(
+        (draft) => draft.unitId === initialSelection.unitId,
+      )
+        ? initialSelection.unitId
+        : draftBody.drafts.at(-1)?.unitId ?? null;
+      setUnitId(selectedUnit);
+      const selectedDraft = selectedUnit
+        ? draftBody.drafts.filter(
+          (draft) => draft.unitId === selectedUnit,
+        ).at(-1) ?? null
+        : null;
+      setTitle(selectedDraft?.title ?? "");
+      setSummary(selectedDraft?.summary ?? "");
+      setScopeText(selectedDraft?.scope.join("\n") ?? "");
+      setExclusionsText(selectedDraft?.exclusions.join("\n") ?? "");
+      setReviewReady(false);
+      const admitted = new Set(
+        sourceBody.sources.map((source) => source.locator),
+      );
+      setSelectedSourceLocators(
+        selectedDraft?.sourceReferences
+          .map((source) => source.locator)
+          .filter((locator) => admitted.has(locator))
+        ?? [],
+      );
+    })()
       .catch((loadError: unknown) => {
         if (active) {
           setError(loadError instanceof Error
@@ -272,7 +358,7 @@ export default function AuthoringWorkspace() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialSelection]);
 
   async function createProject(event: React.FormEvent) {
     event.preventDefault();
@@ -684,7 +770,7 @@ export default function AuthoringWorkspace() {
 
           {selectedRequest ? (
             <>
-              {unitIds.length > 1 && (
+              {unitIds.length > 0 && (
                 <section className={styles.unitChooser} aria-labelledby="unit-title">
                   <h3 id="unit-title">Draft threads</h3>
                   <ul className={styles.unitList}>
@@ -696,11 +782,72 @@ export default function AuthoringWorkspace() {
                           aria-pressed={item === unitId}
                           onClick={() => selectUnit(item)}
                         >
-                          Draft {index + 1}
+                          {drafts.find(
+                            (draft) =>
+                              draft.unitId === item
+                              && draft.correctionContexts.length > 0,
+                          )
+                            ? `Correction reissue · draft ${index + 1}`
+                            : `Draft ${index + 1}`}
                         </button>
                       </li>
                     ))}
                   </ul>
+                </section>
+              )}
+
+              {selectedCorrectionContexts.length > 0 && (
+                <section
+                  className={styles.reissueContext}
+                  aria-labelledby="reissue-context-title"
+                >
+                  <div className={styles.reissueContextHeading}>
+                    <div>
+                      <span>Material correction reissue</span>
+                      <h2 id="reissue-context-title">
+                        Carried correction context
+                      </h2>
+                    </div>
+                    <strong>
+                      Fresh publication and client decision required
+                    </strong>
+                  </div>
+                  {selectedCorrectionContexts.map((context) => (
+                    <article
+                      key={`${context.concernId}-${context.assessmentRevision}`}
+                      className={styles.reissueContextItem}
+                    >
+                      <p>
+                        <strong>Client correction:</strong> {context.statement}
+                      </p>
+                      <dl>
+                        <div>
+                          <dt>Published basis</dt>
+                          <dd>Version {context.sourceVersion}</dd>
+                        </div>
+                        <div>
+                          <dt>Claimed source</dt>
+                          <dd>
+                            {context.claimedSourceType} ·{" "}
+                            {context.sourceAvailability}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Provider source review</dt>
+                          <dd>{context.sourceReview}</dd>
+                        </div>
+                        <div>
+                          <dt>Provider assessment</dt>
+                          <dd>{context.providerResponse}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                  <p className={styles.reissueBoundary}>
+                    Edit by recording the next ordinary immutable draft
+                    revision. The correction hold remains active until a newly
+                    published version receives a fresh explicit client decision.
+                  </p>
                 </section>
               )}
 
@@ -1148,6 +1295,17 @@ export default function AuthoringWorkspace() {
                               : `${draft.sourceReferences.length} server-admitted source references`}{" "}
                             · {draft.state} draft
                           </p>
+                          {draft.correctionContexts.length > 0 && (
+                            <p className={styles.revisionContext}>
+                              Carries {draft.correctionContexts.length} material{" "}
+                              {draft.correctionContexts.length === 1
+                                ? "correction"
+                                : "corrections"} from published version{" "}
+                              {draft.correctionContexts
+                                .map((context) => context.sourceVersion)
+                                .join(", ")}.
+                            </p>
+                          )}
                           {draft.sourceReferences.length > 0 && (
                             <ul className={styles.revisionSources}>
                               {draft.sourceReferences.map((source) => (

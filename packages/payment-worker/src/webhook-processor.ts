@@ -1,7 +1,14 @@
 import type { PaymentObservation } from "@scopeledger/contracts";
-import type { DispatchAdmission } from "@scopeledger/domain";
+import type {
+  DispatchAdmission,
+  PaymentExceptionAdmission,
+  PaymentExceptionObservation,
+  PaymentExceptionReduction,
+} from "@scopeledger/domain";
 import type {
   PayPalCaptureDetails,
+  PayPalOrderDetails,
+  PayPalPaymentExceptionDetails,
   PayPalRefundDetails,
 } from "@scopeledger/paypal-adapter";
 import {
@@ -63,6 +70,14 @@ export interface PayPalWebhookDomainStore {
     scope: Readonly<{ workspaceId: string; projectId: string }>,
     observation: PaymentObservation,
   ): Promise<{ matchesBasis: boolean; completed: boolean }>;
+  paymentExceptionAdmission(
+    scope: Readonly<{ workspaceId: string; projectId: string }>,
+    captureId: string,
+  ): Promise<PaymentExceptionAdmission>;
+  recordPaymentExceptionObservation(
+    scope: Readonly<{ workspaceId: string; projectId: string }>,
+    observation: PaymentExceptionObservation,
+  ): Promise<PaymentExceptionReduction>;
 }
 
 export interface PayPalWebhookProviderClient {
@@ -71,13 +86,30 @@ export interface PayPalWebhookProviderClient {
     admission: DispatchAdmission,
     details: PayPalCaptureDetails,
   ): PaymentObservation;
+  retrieveOrderDetails(orderId: string): Promise<PayPalOrderDetails>;
   retrieveRefundDetails(refundId: string): Promise<PayPalRefundDetails>;
+  refundExceptionFromDetails(
+    admission: PaymentExceptionAdmission,
+    refund: PayPalRefundDetails,
+    capture: PayPalCaptureDetails,
+    order: PayPalOrderDetails,
+  ): PayPalPaymentExceptionDetails;
+  captureRefundExceptionFromDetails(
+    admission: PaymentExceptionAdmission,
+    capture: PayPalCaptureDetails,
+    order: PayPalOrderDetails,
+  ): PayPalPaymentExceptionDetails;
+  captureReversalExceptionFromDetails(
+    admission: PaymentExceptionAdmission,
+    capture: PayPalCaptureDetails,
+    order: PayPalOrderDetails,
+  ): PayPalPaymentExceptionDetails;
 }
 
 export type PayPalWebhookProcessingOutcome =
   | "capture-observation-recorded"
+  | "payment-exception-recorded"
   | "observed-no-automatic-action"
-  | "retained-manual-domain-integration-required"
   | "resource-missing"
   | "invalid-receipt"
   | "unmatched-capture-operation"
@@ -93,6 +125,9 @@ export type PayPalWebhookProcessingResult = Readonly<{
   outcome: PayPalWebhookProcessingOutcome;
   matchesBasis?: boolean;
   completed?: boolean;
+  exceptionState?: PaymentExceptionObservation["state"];
+  duplicate?: boolean;
+  holdActive?: boolean;
 }>;
 
 export type PayPalWebhookProcessingBatch = Readonly<{
@@ -190,6 +225,20 @@ function result(
   });
 }
 
+function exceptionResult(
+  receipt: StoredPayPalWebhookReceipt,
+  state: PaymentExceptionObservation["state"],
+  reduced: PaymentExceptionReduction,
+): PayPalWebhookProcessingResult {
+  return Object.freeze({
+    ...safeIdentity(receipt),
+    outcome: "payment-exception-recorded",
+    exceptionState: state,
+    duplicate: reduced.duplicate,
+    holdActive: reduced.holdActive,
+  });
+}
+
 function validReceipt(
   receipt: StoredPayPalWebhookReceipt,
   scope: PayPalWebhookScope,
@@ -217,6 +266,13 @@ function errorCode(error: unknown): string | null {
 function unmatchedCapture(error: unknown): boolean {
   const code = errorCode(error);
   return code === "NOT_FOUND" || code === "RECONCILIATION_REQUIRED";
+}
+
+function authoritativeMismatch(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === "MERCHANT_MISMATCH"
+    || code === "FINANCIAL_MISMATCH"
+    || code === "PROVIDER_RESPONSE_INVALID";
 }
 
 export class PayPalWebhookReceiptProcessor {
@@ -273,13 +329,10 @@ export class PayPalWebhookReceiptProcessor {
       return this.processRefund(scope, receipt);
     }
     if (receipt.eventType === "PAYMENT.CAPTURE.REVERSED") {
-      return this.processCaptureRetention(receipt);
+      return this.processCaptureReversal(scope, receipt);
     }
     if (receipt.eventType === "CHECKOUT.PAYMENT-APPROVAL.REVERSED") {
-      return result(
-        receipt,
-        "retained-manual-domain-integration-required",
-      );
+      return result(receipt, "unsupported-event-retained");
     }
     return result(receipt, "unsupported-event-retained");
   }
@@ -349,34 +402,102 @@ export class PayPalWebhookReceiptProcessor {
   }
 
   private async processRefund(
-    _scope: PayPalWebhookScope,
+    scope: PayPalWebhookScope,
     receipt: StoredPayPalWebhookReceipt,
   ): Promise<PayPalWebhookProcessingResult> {
     if (receipt.resourceId === null) {
       return result(receipt, "resource-missing");
     }
     const resourceType = receipt.resourceType.toLowerCase();
+    if (resourceType === "refund") {
+      return this.processRefundResource(scope, receipt);
+    }
+    if (
+      resourceType === "capture"
+      && receipt.eventType === "PAYMENT.CAPTURE.REFUNDED"
+    ) {
+      return this.processCaptureRefund(scope, receipt);
+    }
+    return result(receipt, "invalid-receipt");
+  }
+
+  private async processRefundResource(
+    scope: PayPalWebhookScope,
+    receipt: StoredPayPalWebhookReceipt,
+  ): Promise<PayPalWebhookProcessingResult> {
+    let refund: PayPalRefundDetails;
     try {
-      if (resourceType === "refund") {
-        await this.provider.retrieveRefundDetails(receipt.resourceId);
-      } else if (
-        resourceType === "capture"
-        && receipt.eventType === "PAYMENT.CAPTURE.REFUNDED"
-      ) {
-        await this.provider.retrieveCaptureDetails(receipt.resourceId);
-      } else {
-        return result(receipt, "invalid-receipt");
-      }
+      refund = await this.provider.retrieveRefundDetails(receipt.resourceId!);
     } catch {
       return result(receipt, "provider-failure");
     }
-    return result(
+    const admission = await this.exceptionAdmission(
+      scope,
       receipt,
-      "retained-manual-domain-integration-required",
+      refund.captureId,
     );
+    if (!admission.ok) return admission.result;
+    try {
+      const capture = await this.provider.retrieveCaptureDetails(
+        admission.value.captureId,
+      );
+      const order = await this.provider.retrieveOrderDetails(
+        admission.value.orderId,
+      );
+      const observation = this.provider.refundExceptionFromDetails(
+        admission.value,
+        refund,
+        capture,
+        order,
+      );
+      return this.recordException(scope, receipt, observation);
+    } catch (error) {
+      return this.recordRefreshFailure(
+        scope,
+        receipt,
+        admission.value,
+        "refund",
+        error,
+      );
+    }
   }
 
-  private async processCaptureRetention(
+  private async processCaptureRefund(
+    scope: PayPalWebhookScope,
+    receipt: StoredPayPalWebhookReceipt,
+  ): Promise<PayPalWebhookProcessingResult> {
+    const admission = await this.exceptionAdmission(
+      scope,
+      receipt,
+      receipt.resourceId!,
+    );
+    if (!admission.ok) return admission.result;
+    try {
+      const capture = await this.provider.retrieveCaptureDetails(
+        admission.value.captureId,
+      );
+      const order = await this.provider.retrieveOrderDetails(
+        admission.value.orderId,
+      );
+      const observation = this.provider.captureRefundExceptionFromDetails(
+        admission.value,
+        capture,
+        order,
+      );
+      return this.recordException(scope, receipt, observation);
+    } catch (error) {
+      return this.recordRefreshFailure(
+        scope,
+        receipt,
+        admission.value,
+        "refund",
+        error,
+      );
+    }
+  }
+
+  private async processCaptureReversal(
+    scope: PayPalWebhookScope,
     receipt: StoredPayPalWebhookReceipt,
   ): Promise<PayPalWebhookProcessingResult> {
     if (receipt.resourceId === null) {
@@ -385,15 +506,116 @@ export class PayPalWebhookReceiptProcessor {
     if (receipt.resourceType.toLowerCase() !== "capture") {
       return result(receipt, "invalid-receipt");
     }
-    try {
-      await this.provider.retrieveCaptureDetails(receipt.resourceId);
-    } catch {
-      return result(receipt, "provider-failure");
-    }
-    return result(
+    const admission = await this.exceptionAdmission(
+      scope,
       receipt,
-      "retained-manual-domain-integration-required",
+      receipt.resourceId,
     );
+    if (!admission.ok) return admission.result;
+    try {
+      const capture = await this.provider.retrieveCaptureDetails(
+        admission.value.captureId,
+      );
+      const order = await this.provider.retrieveOrderDetails(
+        admission.value.orderId,
+      );
+      const observation = this.provider.captureReversalExceptionFromDetails(
+        admission.value,
+        capture,
+        order,
+      );
+      return this.recordException(scope, receipt, observation);
+    } catch (error) {
+      return this.recordRefreshFailure(
+        scope,
+        receipt,
+        admission.value,
+        "capture-reversal",
+        error,
+      );
+    }
+  }
+
+  private async exceptionAdmission(
+    scope: PayPalWebhookScope,
+    receipt: StoredPayPalWebhookReceipt,
+    captureId: string,
+  ): Promise<
+    | Readonly<{ ok: true; value: PaymentExceptionAdmission }>
+    | Readonly<{ ok: false; result: PayPalWebhookProcessingResult }>
+  > {
+    try {
+      return Object.freeze({
+        ok: true,
+        value: await this.domain.paymentExceptionAdmission(
+          {
+            workspaceId: scope.workspaceId,
+            projectId: scope.projectId,
+          },
+          captureId,
+        ),
+      });
+    } catch (error) {
+      return Object.freeze({
+        ok: false,
+        result: result(
+          receipt,
+          unmatchedCapture(error)
+            ? "unmatched-capture-operation"
+            : "domain-failure",
+        ),
+      });
+    }
+  }
+
+  private async recordRefreshFailure(
+    scope: PayPalWebhookScope,
+    receipt: StoredPayPalWebhookReceipt,
+    admission: PaymentExceptionAdmission,
+    kind: PaymentExceptionObservation["kind"],
+    error: unknown,
+  ): Promise<PayPalWebhookProcessingResult> {
+    const state = authoritativeMismatch(error) ? "mismatch" : "unknown";
+    return this.recordException(scope, receipt, Object.freeze({
+      provider: "paypal",
+      kind,
+      state,
+      operationId: admission.operationId,
+      resourceId: receipt.resourceId!,
+      orderId: admission.orderId,
+      captureId: admission.captureId,
+      merchantId: admission.merchantId,
+      environment: admission.environment,
+      currency: admission.currency,
+      captureGross: admission.gross,
+      affectedGross: null,
+      providerStatus: state === "mismatch"
+        ? "AUTHORITATIVE_RESOURCE_MISMATCH"
+        : "AUTHORITATIVE_REFRESH_FAILED",
+      evidence: {
+        kind: "authenticated-adapter" as const,
+        verificationReference: receipt.verificationReference,
+      },
+    }));
+  }
+
+  private async recordException(
+    scope: PayPalWebhookScope,
+    receipt: StoredPayPalWebhookReceipt,
+    observation: PaymentExceptionObservation,
+  ): Promise<PayPalWebhookProcessingResult> {
+    try {
+      const reduced = await this.domain.recordPaymentExceptionObservation(
+        {
+          workspaceId: scope.workspaceId,
+          projectId: scope.projectId,
+        },
+        observation,
+      );
+      return exceptionResult(receipt, observation.state, reduced);
+    } catch {
+      return result(receipt, "domain-failure");
+    }
   }
 }
 

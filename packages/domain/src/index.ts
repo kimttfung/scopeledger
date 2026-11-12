@@ -50,6 +50,17 @@ export type DispatchAdmission = {
   dispatchAllowed: boolean; reconciliationRequired: boolean; operationId: string;
   providerKey: string; kind: "create" | "capture"; request: unknown; requestHash: string;
 };
+export type PaymentExceptionAdmission = Readonly<{
+  operationId: string;
+  obligationId: string;
+  unitId: string;
+  orderId: string;
+  captureId: string;
+  merchantId: string;
+  environment: "sandbox" | "live";
+  currency: "USD";
+  gross: string;
+}>;
 type Resolution = { acknowledged: true; concerns: { concernId: string; responseRevision: number }[] };
 
 const commandSchema = z.strictObject({ commandId: commandIdentifier });
@@ -195,6 +206,29 @@ export const correctionAdmissionCommandSchema = commandSchema.extend({
   }),
 });
 export const workStartCommandSchema = commandSchema.extend({ unitId: identifier });
+export const paymentExceptionObservationSchema = z.strictObject({
+  provider: z.literal("paypal"),
+  kind: z.enum(["refund", "capture-reversal"]),
+  state: z.enum([
+    "partial-refund",
+    "full-refund",
+    "reversed",
+    "failed",
+    "unknown",
+    "mismatch",
+  ]),
+  operationId: commandIdentifier,
+  resourceId: identifier,
+  orderId: identifier,
+  captureId: identifier,
+  merchantId: identifier,
+  environment: z.enum(["sandbox", "live"]),
+  currency: z.literal("USD"),
+  captureGross: moneySchema,
+  affectedGross: moneySchema.nullable(),
+  providerStatus: z.string().min(1).max(128),
+  evidence: observationSchema.shape.evidence,
+});
 export type PublishCommand = z.infer<typeof publishCommandSchema>;
 export type CommercialPreparationCommand =
   z.infer<typeof commercialPreparationCommandSchema>;
@@ -206,6 +240,17 @@ export type DecisionCommand = z.infer<typeof decisionCommandSchema>;
 export type CorrectionAdmissionCommand = z.infer<typeof correctionAdmissionCommandSchema>;
 export type WorkStartCommand = z.infer<typeof workStartCommandSchema>;
 export type WorkStartResult = { unitId: string; version: number; startedAt: string };
+export type PaymentExceptionObservation = Readonly<
+  z.infer<typeof paymentExceptionObservationSchema>
+>;
+export type PaymentExceptionReduction = Readonly<{
+  duplicate: boolean;
+  holdActive: boolean;
+  readinessWithheld: boolean;
+}>;
+
+const PAYPAL_EXCEPTION_HOLD_BASIS =
+  "Authoritative PayPal refund or capture-reversal observation requires financial reconciliation; the original capture and agreement remain unchanged";
 
 function first<T>(rows: readonly T[], message = "Scoped record not found"): T {
   const row = rows[0];
@@ -249,6 +294,67 @@ function financialMeaning(observation: PaymentObservation): string {
     operationId: observation.operationId, merchantId: observation.merchantId,
     environment: observation.environment, currency: observation.currency, gross: observation.gross,
     orderId: observation.orderId, captureId: observation.captureId ?? null, outcome: observation.outcome,
+  });
+}
+
+function moneyCents(value: string): number {
+  const [whole = "0", fractional = "00"] = value.split(".");
+  return Number(whole) * 100 + Number(fractional);
+}
+
+async function paymentExceptionAdmission(
+  transaction: SqlExecutor,
+  scope: Scope,
+  captureId: string,
+): Promise<PaymentExceptionAdmission> {
+  const rows = (await sql<{
+    operation_id: string;
+    obligation_id: string;
+    unit_id: string;
+    order_id: string;
+    capture_id: string;
+    merchant_id: string;
+    environment: "sandbox" | "live";
+    currency: "USD";
+    gross: string;
+  }>`select o.id::text as operation_id,a.obligation_id,b.unit_id,
+      f.order_id,f.capture_id,f.merchant_id,f.environment,f.currency,f.gross
+    from payment_facts f
+    join operations o
+      on o.workspace_id = f.workspace_id
+      and o.project_id = f.project_id
+      and o.id = f.operation_id
+      and o.kind = 'capture'
+    join attempts a
+      on a.workspace_id = o.workspace_id
+      and a.project_id = o.project_id
+      and a.id = o.attempt_id
+    join obligations b
+      on b.workspace_id = a.workspace_id
+      and b.project_id = a.project_id
+      and b.id = a.obligation_id
+    where f.workspace_id = ${scope.workspaceId}
+      and f.project_id = ${scope.projectId}
+      and f.capture_id = ${captureId}
+    order by o.id
+    limit 2`.execute(transaction)).rows;
+  if (rows.length !== 1) {
+    throw new ProtocolError(
+      "RECONCILIATION_REQUIRED",
+      "The settled capture could not be resolved to one scoped payment fact",
+    );
+  }
+  const row = rows[0]!;
+  return Object.freeze({
+    operationId: row.operation_id,
+    obligationId: row.obligation_id,
+    unitId: row.unit_id,
+    orderId: row.order_id,
+    captureId: row.capture_id,
+    merchantId: row.merchant_id,
+    environment: row.environment,
+    currency: row.currency,
+    gross: row.gross,
   });
 }
 
@@ -1943,6 +2049,168 @@ export class OrderedConsentStore {
       }
       await history(transaction, scope, "payment-worker", "payment-observed", operation.id, { matchesBasis, completed, evidenceKind: observation.evidence.kind, outcome: observation.outcome });
       return { matchesBasis, completed };
+    });
+  }
+
+  async paymentExceptionAdmission(
+    scopeInput: Scope,
+    captureIdInput: unknown,
+  ): Promise<PaymentExceptionAdmission> {
+    const scope = parseInput(
+      z.strictObject({ workspaceId: identifier, projectId: identifier }),
+      scopeInput,
+    );
+    const captureId = parseInput(identifier, captureIdInput);
+    return this.database.transaction(async (transaction) => {
+      await fences(transaction, scope);
+      return paymentExceptionAdmission(transaction, scope, captureId);
+    });
+  }
+
+  async recordPaymentExceptionObservation(
+    scopeInput: Scope,
+    input: unknown,
+  ): Promise<PaymentExceptionReduction> {
+    const scope = parseInput(
+      z.strictObject({ workspaceId: identifier, projectId: identifier }),
+      scopeInput,
+    );
+    const observation = parseInput(paymentExceptionObservationSchema, input);
+    if (
+      observation.evidence.kind === "synthetic-fault"
+      && (
+        this.options.observationMode !== "local-synthetic-proof"
+        || observation.environment !== "sandbox"
+      )
+    ) {
+      throw new ProtocolError(
+        "ACCESS_DENIED",
+        "Synthetic exception observations require an explicitly configured local sandbox proof store",
+      );
+    }
+    if (
+      (observation.kind === "refund" && observation.state === "reversed")
+      || (
+        observation.kind === "capture-reversal"
+        && (
+          observation.state === "partial-refund"
+          || observation.state === "full-refund"
+          || observation.state === "failed"
+        )
+      )
+    ) {
+      throw new ProtocolError(
+        "INVALID_INPUT",
+        "Payment exception kind and state did not agree",
+      );
+    }
+    const affectedCents = observation.affectedGross === null
+      ? null
+      : moneyCents(observation.affectedGross);
+    const captureCents = moneyCents(observation.captureGross);
+    if (
+      (
+        observation.state === "partial-refund"
+        && (
+          affectedCents === null
+          || affectedCents <= 0
+          || affectedCents >= captureCents
+        )
+      )
+      || (
+        (
+          observation.state === "full-refund"
+          || observation.state === "reversed"
+        )
+        && affectedCents !== captureCents
+      )
+      || (
+        (
+          observation.state === "failed"
+          || observation.state === "unknown"
+          || observation.state === "mismatch"
+        )
+        && affectedCents !== null
+      )
+    ) {
+      throw new ProtocolError(
+        "INVALID_INPUT",
+        "Payment exception amount did not match its observed state",
+      );
+    }
+    return this.database.transaction(async (transaction) => {
+      await fences(transaction, scope);
+      let admission = await paymentExceptionAdmission(
+        transaction,
+        scope,
+        observation.captureId,
+      );
+      await lockUnits(transaction, scope, [admission.unitId]);
+      admission = await paymentExceptionAdmission(
+        transaction,
+        scope,
+        observation.captureId,
+      );
+      if (
+        observation.operationId !== admission.operationId
+        || observation.orderId !== admission.orderId
+        || observation.captureId !== admission.captureId
+        || observation.merchantId !== admission.merchantId
+        || observation.environment !== admission.environment
+        || observation.currency !== admission.currency
+        || observation.captureGross !== admission.gross
+      ) {
+        throw new ProtocolError(
+          "FINANCIAL_MISMATCH",
+          "Payment exception observation did not match the immutable settled capture",
+        );
+      }
+
+      const detail = canonicalJson(observation);
+      const duplicate = (await sql`select 1 from protocol_history
+        where workspace_id = ${scope.workspaceId}
+          and project_id = ${scope.projectId}
+          and event = 'payment-exception-observed'
+          and resource_id = ${observation.resourceId}
+          and detail = ${detail}::jsonb
+        limit 1`.execute(transaction)).rows.length !== 0;
+      if (!duplicate) {
+        await history(
+          transaction,
+          scope,
+          "payment-worker",
+          "payment-exception-observed",
+          observation.resourceId,
+          observation,
+        );
+      }
+
+      const blocksReadiness = observation.state !== "failed";
+      let activeHold = (await sql`select 1 from holds
+        where workspace_id = ${scope.workspaceId}
+          and project_id = ${scope.projectId}
+          and unit_id = ${admission.unitId}
+          and reason = 'financial'
+          and basis = ${PAYPAL_EXCEPTION_HOLD_BASIS}
+          and resolved_at is null
+        limit 1`.execute(transaction)).rows.length !== 0;
+      if (blocksReadiness && !activeHold) {
+        await addHold(
+          transaction,
+          scope,
+          "payment-worker",
+          admission.unitId,
+          "financial",
+          PAYPAL_EXCEPTION_HOLD_BASIS,
+          null,
+        );
+        activeHold = true;
+      }
+      return Object.freeze({
+        duplicate,
+        holdActive: activeHold,
+        readinessWithheld: activeHold,
+      });
     });
   }
 
