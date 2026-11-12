@@ -1,0 +1,21 @@
+{
+  "task": "custom-unit-paypal-payment",
+  "profile": "local-synthetic-paypal-sandbox",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:custom-payment",
+  "result": { "tests": 15, "passed": 15, "failed": 0 },
+  "proved": [
+    "Explicit provider activation grants only exact obligation payment authority",
+    "Opaque custom payer locators expose no financial identity",
+    "Verified payer prepares one stable server-owned attempt",
+    "Return remains non-financial and capture requires explicit action",
+    "Capture discovery/reconciliation never redispatches capture",
+    "Real Harbor USD 200 Sandbox capture derived ready"
+  ],
+  "notProved": [
+    "Stable deployed webhook delivery for the custom unit",
+    "External refund/reversal recovery",
+    "Public deployment"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}

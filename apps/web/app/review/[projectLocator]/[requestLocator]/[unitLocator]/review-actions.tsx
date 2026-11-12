@@ -203,7 +203,11 @@ export function ReviewActions({
             server-verified published version.
           </p>
         </div>
-        <span>Payment unavailable here</span>
+        <span>
+          {review.actions.payment.available
+            ? "Payment available through separate payer access"
+            : "Payment unavailable here"}
+        </span>
       </div>
 
       <div
@@ -410,11 +414,24 @@ export function ReviewActions({
 
       <div className={styles.paymentBoundary}>
         <strong>Payment remains separate</strong>
-        <p>
-          This review can record a decision, question, or correction only.
-          Checkout, capture, reconciliation, and payment status changes are not
-          available in this slice.
-        </p>
+        {review.actions.payment.available && review.actions.payment.url
+          ? (
+            <p>
+              The provider explicitly activated the fixed local payer for this
+              exact approved obligation.{" "}
+              <a href={review.actions.payment.url}>
+                Open the opaque payer Checkout
+              </a>
+              . Client approval granted no payer or approver authority.
+            </p>
+          )
+          : (
+            <p>
+              This review can record a decision, question, or correction only.
+              Checkout, capture, reconciliation, and payment status changes are not
+              available until separate payer authority is activated.
+            </p>
+          )}
       </div>
 
       <dialog

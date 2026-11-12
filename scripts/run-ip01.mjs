@@ -183,9 +183,12 @@ export async function main() {
   const supportedSuites = new Set([
     "ordered-consent",
     "analysis-persistence",
+    "custom-payment",
     "h1-authoring-foundation",
     "publication-foundation",
     "provider-participants",
+    "provider-reconciliation",
+    "provider-source-analysis",
     "records-export",
   ]);
   if (
@@ -193,7 +196,7 @@ export async function main() {
     || arguments_.some((argument) =>
       argument !== "--check-runtime" && argument !== suiteArgument)
   ) {
-    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|h1-authoring-foundation|publication-foundation|provider-participants|records-export.");
+    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|custom-payment|h1-authoring-foundation|publication-foundation|provider-participants|provider-reconciliation|provider-source-analysis|records-export.");
     process.exitCode = 1;
     return;
   }

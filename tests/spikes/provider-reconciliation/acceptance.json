@@ -1,0 +1,24 @@
+{
+  "task": "provider-reconciliation",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:provider-reconciliation",
+  "result": { "tests": 14, "passed": 14, "failed": 0 },
+  "evidence": "real-postgresql-and-focused-service-ui",
+  "claims": [
+    "verified provider assurance and current project grants are independently required",
+    "authorized questions remain communication-only and create no review hold",
+    "correction responses require explicit applicability assessment",
+    "needs-information and no-material responses do not clear correction holds",
+    "material change creates an immutable in-progress reissue draft from the exact current published unit",
+    "reissue still requires normal commercial preparation, publication, and fresh client consent",
+    "stale, revoked, cross-project, and conflicting replay attempts fail closed",
+    "independent holds and prior decision, obligation, and payment history remain unchanged"
+  ],
+  "notProved": [
+    "Completed reissue publication and fresh client consent from a new material concern",
+    "External notifications",
+    "Public deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

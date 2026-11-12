@@ -843,6 +843,30 @@ export class OrderedConsentStore {
       );
     }
 
+    const reconciliation = (await sql<{
+      concern_id: string;
+      response_revision: number;
+    }>`select a.concern_id,a.response_revision
+      from provider_reconciliation_assessments a
+      where a.workspace_id = ${current.workspaceId}
+        and a.project_id = ${current.projectId}
+        and a.unit_id = ${preparation.unitId}
+        and a.unit_version = ${preparation.expectedPreviousVersion}
+        and a.applicability = 'material-change'
+        and a.draft_revision <= ${preparation.draftRevision}
+        and a.assessment_revision = (
+          select max(a2.assessment_revision)::integer
+          from provider_reconciliation_assessments a2
+          where a2.workspace_id = a.workspace_id
+            and a2.project_id = a.project_id
+            and a2.concern_id = a.concern_id
+        )
+      order by a.concern_id collate "C"`
+      .execute(transaction)).rows.map((entry) => ({
+        concernId: entry.concern_id,
+        responseRevision: entry.response_revision,
+      }));
+
     const common = {
       schemaVersion: "scopeledger.published-unit.v1" as const,
       serializationVersion: "scopeledger.canonical-json.v1" as const,
@@ -874,7 +898,7 @@ export class OrderedConsentStore {
         ...entry,
         recorderId: preparation.preparedBy,
       })),
-      reconciliation: [],
+      reconciliation,
     };
     if (preparation.treatment === "waived") {
       return parseInput(publishedUnitSchema, {
@@ -894,6 +918,42 @@ export class OrderedConsentStore {
         "Payable preparation lost its exact financial terms",
       );
     }
+    let financialEffect: Extract<
+      PublishedUnit,
+      { treatment: "payable" }
+    >["financialEffect"] = { kind: "new" };
+    if (unit.accepted_version !== null) {
+      const previous = (await sql<{ id: string }>`select id
+        from obligations
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and unit_id = ${preparation.unitId}
+          and version = ${unit.accepted_version}
+          and collectible
+        for key share`.execute(transaction)).rows[0];
+      if (!previous) {
+        throw new ProtocolError(
+          "COLLECTION_CONFLICT",
+          "Accepted terms do not have a replaceable unpaid obligation",
+        );
+      }
+      const attempts = await sql`select 1 from attempts
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and obligation_id = ${previous.id}
+        limit 1
+        for key share`.execute(transaction);
+      if (attempts.rows.length) {
+        throw new ProtocolError(
+          "PAYMENT_OUTCOME_UNKNOWN",
+          "A payment attempt requires financial reconciliation before reissue",
+        );
+      }
+      financialEffect = {
+        kind: "unpaid-replacement",
+        replacesObligationId: previous.id,
+      };
+    }
     return parseInput(publishedUnitSchema, {
       ...common,
       treatment: "payable",
@@ -909,7 +969,7 @@ export class OrderedConsentStore {
           gross: price.gross,
         },
       },
-      financialEffect: { kind: "new" },
+      financialEffect,
     });
   }
 
@@ -1313,6 +1373,203 @@ export class OrderedConsentStore {
           approverId: command.approverId,
           nominationEpoch: command.nominationEpoch,
           grantEpochs,
+          activatedAt,
+        };
+      },
+      {
+        exclusiveProject: true,
+        validateReplay: async (transaction, current, project, result) => {
+          await validateCurrent(transaction, current, project, result);
+        },
+      },
+    );
+  }
+
+  async activatePayerAuthority(actor: Actor, input: unknown): Promise<{
+    obligationId: string;
+    payerId: string;
+    grantEpoch: number;
+    payerEpoch: number;
+    nominationEpoch: number;
+    activatedAt: string;
+  }> {
+    const command = parseInput(commandSchema.extend({
+      obligationId: identifier,
+      unitId: identifier,
+      version: revision,
+      digest: digestSchema,
+      payerId: identifier,
+    }), input);
+    type Result = {
+      obligationId: string;
+      payerId: string;
+      grantEpoch: number;
+      payerEpoch: number;
+      nominationEpoch: number;
+      activatedAt: string;
+    };
+    const validateCurrent = async (
+      transaction: ProtocolTransaction,
+      current: Actor,
+      project: Project,
+      result: Result,
+    ) => {
+      const obligation = first((await sql<Obligation>`select * from obligations
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and id = ${command.obligationId}`
+        .execute(transaction)).rows);
+      const unit = first((await sql<Unit>`select * from units
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and id = ${command.unitId}`
+        .execute(transaction)).rows);
+      const version = first((await sql<{ digest: string }>`select digest
+        from unit_versions
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and unit_id = ${command.unitId}
+          and version = ${command.version}`
+        .execute(transaction)).rows);
+      const grant = first((await sql<{ epoch: number; active: boolean }>`
+        select epoch,active from grants
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and actor_id = ${command.payerId}
+          and action = 'pay'`
+        .execute(transaction)).rows);
+      const nomination = first((await sql<{
+        actor_id: string;
+        epoch: number;
+        continuity_epoch: number;
+        active: boolean;
+      }>`select actor_id,epoch,continuity_epoch,active
+        from payer_nominations
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and obligation_id = ${command.obligationId}`
+        .execute(transaction)).rows);
+      if (
+        obligation.unit_id !== command.unitId
+        || obligation.version !== command.version
+        || !obligation.collectible
+        || unit.current_version !== command.version
+        || unit.accepted_version !== command.version
+        || version.digest !== command.digest
+        || !grant.active
+        || grant.epoch !== result.grantEpoch
+        || nomination.actor_id !== command.payerId
+        || !nomination.active
+        || nomination.epoch !== result.payerEpoch
+        || nomination.continuity_epoch !== project.nomination_epoch
+        || result.obligationId !== command.obligationId
+        || result.payerId !== command.payerId
+        || result.nominationEpoch !== project.nomination_epoch
+      ) {
+        throw new ProtocolError(
+          "STALE_CONTEXT",
+          "The activated payer authority changed after the recorded command",
+        );
+      }
+    };
+    return this.command(
+      actor,
+      "publish",
+      command,
+      command,
+      async (transaction, current, project) => {
+        const { obligation, unit, snapshot } = await this.financialLocks(
+          transaction,
+          current,
+          command.obligationId,
+        );
+        const version = first((await sql<{ digest: string }>`select digest
+          from unit_versions
+          where workspace_id = ${current.workspaceId}
+            and project_id = ${current.projectId}
+            and unit_id = ${command.unitId}
+            and version = ${command.version}`
+          .execute(transaction)).rows);
+        if (
+          obligation.unit_id !== command.unitId
+          || obligation.version !== command.version
+          || !obligation.collectible
+          || unit.current_version !== command.version
+          || unit.accepted_version !== command.version
+          || snapshot.treatment !== "payable"
+          || obligation.merchant_id !== project.merchant_id
+          || obligation.environment !== project.environment
+          || obligation.currency !== snapshot.payment.financial.currency
+          || obligation.gross !== snapshot.payment.financial.gross
+          || version.digest !== command.digest
+        ) {
+          throw new ProtocolError(
+            "STALE_CONTEXT",
+            "Payer activation requires the exact current approved payable obligation",
+          );
+        }
+        const existingGrant = (await sql`select 1 from grants
+          where workspace_id = ${current.workspaceId}
+            and project_id = ${current.projectId}
+            and actor_id = ${command.payerId}
+            and action = 'pay'`
+          .execute(transaction)).rows[0];
+        const existingNomination = (await sql`select 1 from payer_nominations
+          where workspace_id = ${current.workspaceId}
+            and project_id = ${current.projectId}
+            and obligation_id = ${command.obligationId}`
+          .execute(transaction)).rows[0];
+        if (existingGrant || existingNomination) {
+          throw new ProtocolError(
+            "STALE_CONTEXT",
+            "Payer authority already exists outside this activation command",
+          );
+        }
+        const grant = first((await sql<{ epoch: number }>`insert into grants(
+            workspace_id,project_id,actor_id,action,active
+          ) values (
+            ${current.workspaceId},${current.projectId},
+            ${command.payerId},'pay',true
+          )
+          returning epoch`
+          .execute(transaction)).rows);
+        const nomination = first((await sql<{ epoch: number }>`
+          insert into payer_nominations(
+            workspace_id,project_id,obligation_id,actor_id,epoch,
+            continuity_epoch,active,nominated_by,basis
+          ) values (
+            ${current.workspaceId},${current.projectId},
+            ${command.obligationId},${command.payerId},1,
+            ${project.nomination_epoch},true,${current.actorId},
+            'Provider explicitly activated the fixed verified local payer for this exact approved obligation.'
+          )
+          returning epoch`
+          .execute(transaction)).rows);
+        const activatedAt = first((await sql<{ activated_at: Date }>`
+          select clock_timestamp() as activated_at`
+          .execute(transaction)).rows).activated_at.toISOString();
+        await history(
+          transaction,
+          current,
+          current.actorId,
+          "local-payer-authority-activated",
+          command.obligationId,
+          {
+            unitId: command.unitId,
+            version: command.version,
+            payerId: command.payerId,
+            grantEpoch: grant.epoch,
+            payerEpoch: nomination.epoch,
+            nominationEpoch: project.nomination_epoch,
+            approverAuthority: false,
+          },
+        );
+        return {
+          obligationId: command.obligationId,
+          payerId: command.payerId,
+          grantEpoch: grant.epoch,
+          payerEpoch: nomination.epoch,
+          nominationEpoch: project.nomination_epoch,
           activatedAt,
         };
       },

@@ -8,6 +8,7 @@ import { migration003 } from "./migrations/003-analysis-persistence.js";
 import { migration004 } from "./migrations/004-authoring-foundation.js";
 import { migration005 } from "./migrations/005-commercial-publication.js";
 import { migration006 } from "./migrations/006-provider-baseline-confirmation.js";
+import { migration007 } from "./migrations/007-provider-reconciliation.js";
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type Json = ColumnType<unknown, string, string>;
@@ -96,6 +97,8 @@ export interface Database {
     confirmation_digest: string;
   };
   client_questions: Scope & { question_id: string; request_id: string; unit_id: string; unit_version: number; asked_by: string; exact_text: string; model_processing: "permitted" | "denied"; communication_effect: Generated<"communication-only">; asked_at: Timestamp; record_digest: string };
+  provider_question_responses: Scope & { question_id: string; revision: number; command_id: string; request_digest: string; status: "answered" | "needs-client-information" | "closed"; response_text: string; responded_by: string; responded_at: Timestamp; record_digest: string };
+  provider_reconciliation_assessments: Scope & { concern_id: string; assessment_revision: number; command_id: string; request_digest: string; applicability: "no-material-change" | "material-change" | "needs-information"; request_id: string; unit_id: string; unit_version: number; unit_digest: string; response_revision: number; provider_response: string; source_review: string; assessed_by: string; assessed_at: Timestamp; draft_revision: number | null; draft_digest: string | null; record_digest: string };
 }
 export type ProtocolTransaction = Transaction<Database>;
 export type SqlExecutor = Kysely<Database> | ProtocolTransaction;
@@ -204,6 +207,7 @@ export class ProtocolDatabase {
         { version: 4, source: migration004 },
         { version: 5, source: migration005 },
         { version: 6, source: migration006 },
+        { version: 7, source: migration007 },
       ] as const;
       if (applied.some((version, index) => version !== index + 1)
           || applied.length > migrations.length) {
@@ -262,6 +266,7 @@ export {
   migration004,
   migration005,
   migration006,
+  migration007,
   sql,
 };
 export * from "./runtime-persistence.js";

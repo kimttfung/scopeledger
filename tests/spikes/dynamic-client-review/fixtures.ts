@@ -123,6 +123,6 @@ export const reviewFixture: ReviewProjection = {
     },
     question: { available: true },
     correction: { available: true },
-    payment: { available: false },
+    payment: { available: false, url: null },
   },
 };

@@ -123,10 +123,23 @@ export default async function ProviderPage() {
         <Link href="/provider/records">Open project records and exports</Link>
       </p>
       <p>
+        <Link href="/provider/reconciliation">
+          Open questions and correction reconciliation
+        </Link>
+      </p>
+      <p>
+        <Link href="/provider/source-analysis">
+          Analyze admitted project sources
+        </Link>
+      </p>
+      <p>
         <a href="/provider/analysis">Open protected PDF analysis</a>
       </p>
       <p>
         <a href="/provider/operations">Open provider operations</a>
+      </p>
+      <p>
+        <Link href="/provider/payments">Open payer authority</Link>
       </p>
       <p>
         <a href="/auth/logout">Sign out</a>

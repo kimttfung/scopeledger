@@ -1,0 +1,21 @@
+{
+  "task": "provider-admitted-source-analysis",
+  "profile": "local-synthetic-auth0-postgresql-object-storage",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:provider-source-analysis",
+  "result": { "tests": 7, "passed": 7, "failed": 0 },
+  "proved": [
+    "Opaque scoped admitted-source selection",
+    "Integrity-verified immutable PDF/text/Markdown bytes",
+    "Format-honest exact extraction and coverage",
+    "Stored sharing/model permission enforcement",
+    "Persistent human-review-required analysis runs and append-only reviews",
+    "No treatment, publication, payment or readiness authority"
+  ],
+  "notProved": [
+    "Deployed object storage",
+    "Malware/OCR hardening",
+    "Real private-document processing permission"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

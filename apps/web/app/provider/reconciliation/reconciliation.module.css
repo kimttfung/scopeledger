@@ -1,0 +1,284 @@
+.main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 42px 40px 72px;
+}
+
+.intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 40px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.intro > div {
+  max-width: 720px;
+}
+
+.intro p {
+  margin-top: 14px;
+  color: var(--color-muted);
+}
+
+.boundary {
+  flex: 0 0 285px;
+  padding: 14px 16px;
+  color: var(--color-muted);
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+}
+
+.boundary strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+.workspace {
+  display: grid;
+  gap: 34px;
+  margin-top: 34px;
+}
+
+.empty,
+.notice,
+.error {
+  padding: 18px 20px;
+  border: 1px solid var(--color-rule);
+  font-size: 13px;
+}
+
+.empty {
+  color: var(--color-muted);
+}
+
+.loading {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5) 20px;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.loading span {
+  height: 12px;
+  background: var(--color-rule);
+  border-radius: var(--radius-control);
+}
+
+.loading span:nth-child(1) {
+  width: 42%;
+}
+
+.loading span:nth-child(2) {
+  width: 78%;
+}
+
+.loading span:nth-child(3) {
+  width: 61%;
+}
+
+.notice {
+  border-color: var(--color-cobalt);
+  background: var(--color-tint);
+}
+
+.error {
+  border-color: var(--color-error);
+  color: var(--color-error);
+  background: var(--color-surface);
+}
+
+.section {
+  min-width: 0;
+}
+
+.sectionTitle {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.75fr) minmax(0, 1.25fr);
+  gap: 32px;
+  align-items: baseline;
+  padding: 12px 20px;
+  background: var(--color-tint);
+}
+
+.sectionTitle span {
+  color: var(--color-muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sectionTitle h2 {
+  margin-top: 2px;
+  font-size: 16px;
+}
+
+.sectionTitle p {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--color-rule);
+  list-style: none;
+}
+
+.item {
+  padding: 22px 20px 26px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.itemHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.itemHeading strong,
+.itemHeading span {
+  display: block;
+}
+
+.itemHeading strong {
+  font-size: 15px;
+}
+
+.itemHeading div > span,
+.attribution,
+.priorResponse span {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.status {
+  padding: 4px 8px;
+  border: 1px solid var(--color-rule);
+  border-radius: 3px;
+  color: var(--color-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.item blockquote {
+  margin: 18px 0 0;
+  padding: 13px 15px;
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  white-space: pre-wrap;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+
+.facts dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.facts dd {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
+.priorResponse {
+  margin-top: 17px;
+  padding: 13px 15px;
+  border: 1px solid var(--color-rule);
+}
+
+.priorResponse p {
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 13px 18px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-rule);
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.form label:has(textarea) {
+  grid-column: 2;
+}
+
+.form select,
+.form textarea {
+  width: 100%;
+  padding: 10px 11px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+
+.form select:focus-visible,
+.form textarea:focus-visible {
+  outline: 3px solid var(--color-cobalt);
+  outline-offset: 4px;
+}
+
+.form textarea {
+  resize: vertical;
+}
+
+.form button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+@media (max-width: 760px) {
+  .main {
+    padding: 30px 20px 56px;
+  }
+
+  .intro {
+    display: grid;
+  }
+
+  .boundary {
+    width: auto;
+  }
+
+  .sectionTitle,
+  .form {
+    grid-template-columns: 1fr;
+  }
+
+  .form label:has(textarea),
+  .form button {
+    grid-column: 1;
+  }
+
+  .itemHeading {
+    display: grid;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+}

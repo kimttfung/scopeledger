@@ -588,6 +588,63 @@ async function currentFacts(
   };
 }
 
+async function paymentAction(
+  transaction: ProtocolTransaction,
+  target: ResolvedTarget,
+  row: TargetRow,
+  codec: ReviewLocatorCodec,
+  locators: ReviewLocators,
+): Promise<ReviewProjection["actions"]["payment"]> {
+  const payerId = "cedar-payer";
+  const authority = (await sql<{
+    obligation_id: string;
+  }>`select obligation.id as obligation_id
+    from obligations obligation
+    join grants pay_grant
+      on pay_grant.workspace_id = obligation.workspace_id
+      and pay_grant.project_id = obligation.project_id
+      and pay_grant.actor_id = ${payerId}
+      and pay_grant.action = 'pay'
+      and pay_grant.active = true
+    join payer_nominations nomination
+      on nomination.workspace_id = obligation.workspace_id
+      and nomination.project_id = obligation.project_id
+      and nomination.obligation_id = obligation.id
+      and nomination.actor_id = ${payerId}
+      and nomination.active = true
+      and nomination.continuity_epoch = ${row.nomination_epoch}
+    where obligation.workspace_id = ${target.workspaceId}
+      and obligation.project_id = ${target.projectId}
+      and obligation.unit_id = ${target.unitId}
+      and obligation.version = ${row.current_version}
+      and obligation.collectible = true
+    limit 2`
+    .execute(transaction)).rows;
+  if (authority.length !== 1) {
+    return Object.freeze({ available: false, url: null });
+  }
+  const payerLocator = codec.payer(
+    target.workspaceId,
+    target.projectId,
+    target.requestId,
+    target.unitId,
+    row.current_version,
+    row.digest,
+    authority[0]!.obligation_id,
+    payerId,
+  );
+  return Object.freeze({
+    available: true,
+    url: [
+      "/pay",
+      locators.projectLocator,
+      locators.requestLocator,
+      locators.unitLocator,
+      payerLocator,
+    ].join("/"),
+  });
+}
+
 async function resolvableConcerns(
   transaction: ProtocolTransaction,
   target: ResolvedTarget,
@@ -751,6 +808,13 @@ export async function loadDatabaseReview(
       target,
       row.current_version,
     );
+    const payerAction = await paymentAction(
+      transaction,
+      target,
+      row,
+      input.codec,
+      input.locators,
+    );
     return {
       target,
       row,
@@ -759,6 +823,7 @@ export async function loadDatabaseReview(
       facts,
       resolutionConcerns,
       history,
+      payerAction,
     };
   });
 
@@ -845,7 +910,7 @@ export async function loadDatabaseReview(
       }),
       question: Object.freeze({ available: true as const }),
       correction: Object.freeze({ available: true as const }),
-      payment: Object.freeze({ available: false as const }),
+      payment: loaded.payerAction,
     }),
   });
 }

@@ -7,6 +7,7 @@ const locatorPatterns = {
   project: /^slr1p_[A-Za-z0-9_-]{43}$/u,
   request: /^slr1r_[A-Za-z0-9_-]{43}$/u,
   unit: /^slr1u_[A-Za-z0-9_-]{43}$/u,
+  payer: /^slr1y_[A-Za-z0-9_-]{43}$/u,
 } as const;
 const secretPattern = /^[a-f0-9]{64}$/iu;
 
@@ -144,7 +145,8 @@ export type ReviewProjection = Readonly<{
       available: true;
     }>;
     payment: Readonly<{
-      available: false;
+      available: boolean;
+      url: string | null;
     }>;
   }>;
 }>;
@@ -205,7 +207,7 @@ function safeEqual(left: string, right: string): boolean {
 
 function locator(
   secret: Buffer,
-  prefix: "slr1p_" | "slr1r_" | "slr1u_",
+  prefix: "slr1p_" | "slr1r_" | "slr1u_" | "slr1y_",
   parts: readonly string[],
 ): string {
   const digest = createHmac("sha256", secret)
@@ -273,6 +275,28 @@ export class ReviewLocatorCodec {
     ]);
   }
 
+  payer(
+    workspaceId: string,
+    projectId: string,
+    requestId: string,
+    unitId: string,
+    version: number,
+    digest: string,
+    obligationId: string,
+    payerId: string,
+  ): string {
+    return locator(this.secret, "slr1y_", [
+      workspaceId,
+      projectId,
+      requestId,
+      unitId,
+      String(version),
+      digest,
+      obligationId,
+      payerId,
+    ]);
+  }
+
   matchesProject(
     candidate: string,
     workspaceId: string,
@@ -327,6 +351,36 @@ export class ReviewLocatorCodec {
       ),
     );
   }
+
+  matchesPayer(
+    candidate: string,
+    workspaceId: string,
+    projectId: string,
+    requestId: string,
+    unitId: string,
+    version: number,
+    digest: string,
+    obligationId: string,
+    payerId: string,
+  ): boolean {
+    return safeEqual(
+      candidate,
+      this.payer(
+        workspaceId,
+        projectId,
+        requestId,
+        unitId,
+        version,
+        digest,
+        obligationId,
+        payerId,
+      ),
+    );
+  }
+}
+
+export function validPayerLocator(locatorValue: string): boolean {
+  return locatorPatterns.payer.test(locatorValue);
 }
 
 export function validReviewLocators(

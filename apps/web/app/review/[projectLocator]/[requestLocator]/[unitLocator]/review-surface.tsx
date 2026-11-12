@@ -210,7 +210,8 @@ export function ReviewSurface({
         <p>
           This page reads the current published record. A verified client
           approver can preview and record a decision, question, or correction.
-          Payment and work-start actions remain unavailable.
+          Payment remains a separate fixed-payer flow, and work start remains
+          unavailable here.
         </p>
       </div>
 
