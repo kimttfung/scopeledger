@@ -8,10 +8,11 @@
     "role": "client-approver",
     "sessionSurvivedReload": true,
     "plainCodeStored": false,
-    "recipientStoredInSession": false
+    "recipientStoredInSession": false,
+    "challengePersistence": "postgresql"
   },
   "evidence": [
-    "A same-origin browser request issued a short-lived client-approver challenge",
+    "A same-origin browser request issued a short-lived client-approver challenge in PostgreSQL",
     "Mailpit captured the six-digit verification message",
     "The submitted code consumed the challenge once",
     "The resulting HttpOnly signed session survived page reload",
@@ -22,7 +23,7 @@
     "Transactional email internet delivery",
     "Legal authority to approve for a client",
     "Multiple-browser revocation and recovery",
-    "Public multi-instance durable challenge storage",
+    "Public multi-instance challenge deployment and recovery",
     "Production rate limiting and abuse controls"
   ],
   "containsPrivateRecordsOrCredentials": false

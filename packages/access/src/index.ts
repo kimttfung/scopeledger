@@ -103,23 +103,80 @@ function safeEqual(left: string, right: string): boolean {
     && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-export class FileAccessStore {
-  private readonly root: string;
+export class AccessSessionCodec {
   private readonly secret: string;
   private readonly clock: () => Date;
-  private readonly codeGenerator: () => string;
 
-  constructor(options: AccessStoreOptions) {
-    const secret = secretSchema.safeParse(options.secret);
+  constructor(
+    secretInput: string,
+    options: { clock?: () => Date } = {},
+  ) {
+    const secret = secretSchema.safeParse(secretInput);
     if (!secret.success) {
       throw new AccessError(
         "INVALID_CONFIG",
         "Access session secret must be a 32-byte hexadecimal value",
       );
     }
-    this.root = resolve(options.rootDirectory);
     this.secret = secret.data.toLowerCase();
     this.clock = options.clock ?? (() => new Date());
+  }
+
+  codeDigest(challengeId: string, code: string): string {
+    return createHmac("sha256", this.secret)
+      .update(`${challengeId}:${code}`)
+      .digest("hex");
+  }
+
+  subject(recipient: string, role: AccessRole): string {
+    return createHmac("sha256", this.secret)
+      .update(`${role}:${recipient.toLowerCase()}`)
+      .digest("hex");
+  }
+
+  mintSession(sessionInput: AccessSession): string {
+    const session = sessionPayloadSchema.parse(sessionInput);
+    const payload = base64Url(JSON.stringify(session));
+    const signature = createHmac("sha256", this.secret)
+      .update(payload)
+      .digest("base64url");
+    return `${payload}.${signature}`;
+  }
+
+  readSession(token: string | undefined): AccessSession | null {
+    if (!token) return null;
+    const [payload, signature, extra] = token.split(".");
+    if (!payload || !signature || extra) return null;
+    const expected = createHmac("sha256", this.secret)
+      .update(payload)
+      .digest("base64url");
+    if (!safeEqual(expected, signature)) return null;
+    try {
+      const parsed = sessionPayloadSchema.safeParse(
+        JSON.parse(parseBase64Url(payload)),
+      );
+      if (!parsed.success || Date.parse(parsed.data.expiresAt) <= this.clock().getTime()) {
+        return null;
+      }
+      return Object.freeze(parsed.data);
+    } catch {
+      return null;
+    }
+  }
+}
+
+export class FileAccessStore {
+  private readonly root: string;
+  private readonly clock: () => Date;
+  private readonly codeGenerator: () => string;
+  private readonly codec: AccessSessionCodec;
+
+  constructor(options: AccessStoreOptions) {
+    this.root = resolve(options.rootDirectory);
+    this.clock = options.clock ?? (() => new Date());
+    this.codec = new AccessSessionCodec(options.secret, {
+      clock: this.clock,
+    });
     this.codeGenerator = options.codeGenerator
       ?? (() => randomInt(0, 1_000_000).toString().padStart(6, "0"));
   }
@@ -241,33 +298,11 @@ export class FileAccessStore {
   }
 
   mintSession(sessionInput: AccessSession): string {
-    const session = sessionPayloadSchema.parse(sessionInput);
-    const payload = base64Url(JSON.stringify(session));
-    const signature = createHmac("sha256", this.secret)
-      .update(payload)
-      .digest("base64url");
-    return `${payload}.${signature}`;
+    return this.codec.mintSession(sessionInput);
   }
 
   readSession(token: string | undefined): AccessSession | null {
-    if (!token) return null;
-    const [payload, signature, extra] = token.split(".");
-    if (!payload || !signature || extra) return null;
-    const expected = createHmac("sha256", this.secret)
-      .update(payload)
-      .digest("base64url");
-    if (!safeEqual(expected, signature)) return null;
-    try {
-      const parsed = sessionPayloadSchema.safeParse(
-        JSON.parse(parseBase64Url(payload)),
-      );
-      if (!parsed.success || Date.parse(parsed.data.expiresAt) <= this.clock().getTime()) {
-        return null;
-      }
-      return Object.freeze(parsed.data);
-    } catch {
-      return null;
-    }
+    return this.codec.readSession(token);
   }
 
   private challengeId(input: unknown): string {
@@ -277,15 +312,11 @@ export class FileAccessStore {
   }
 
   private subject(recipient: string, role: AccessRole): string {
-    return createHmac("sha256", this.secret)
-      .update(`${role}:${recipient.toLowerCase()}`)
-      .digest("hex");
+    return this.codec.subject(recipient, role);
   }
 
   private codeDigest(challengeId: string, code: string): string {
-    return createHmac("sha256", this.secret)
-      .update(`${challengeId}:${code}`)
-      .digest("hex");
+    return this.codec.codeDigest(challengeId, code);
   }
 
   private challengePath(challengeId: string): string {

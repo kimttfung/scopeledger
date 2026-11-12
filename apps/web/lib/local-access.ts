@@ -1,21 +1,42 @@
 import {
   FileAccessStore,
 } from "@scopeledger/access";
+import type {
+  AccessRole,
+  AccessSession,
+  IssuedChallenge,
+} from "@scopeledger/access";
 import {
   MailpitEmailClient,
   localEmailConfigFromEnvironment,
 } from "@scopeledger/email-adapter";
+import { PostgresLocalAccessStore } from "./postgres-access-store";
+import { protocolDatabase } from "./protocol-database";
 
 const cookieNamePattern = /^[A-Za-z0-9_-]{1,64}$/;
 
 export type LocalAccessRuntime = Readonly<{
-  store: FileAccessStore;
+  store: LocalAccessStore;
   email: MailpitEmailClient;
   cookieName: string;
   clientRecipient: string;
   payerRecipient: string;
   inboxUrl: string;
   cookieSecure: boolean;
+}>;
+
+export type LocalAccessStore = Readonly<{
+  issue(input: {
+    recipient: string;
+    role: AccessRole;
+  }): Promise<IssuedChallenge>;
+  revoke(challengeId: string): Promise<void>;
+  verify(input: {
+    challengeId: string;
+    code: string;
+  }): Promise<AccessSession>;
+  mintSession(session: AccessSession): string;
+  readSession(token: string | undefined): AccessSession | null;
 }>;
 
 export function localAccessRuntime(
@@ -49,8 +70,18 @@ export function localAccessRuntime(
   ) {
     throw new Error("EMAIL_MAILPIT_API must use local loopback HTTP");
   }
+  const database = protocolDatabase();
   return Object.freeze({
-    store: new FileAccessStore({ rootDirectory, secret }),
+    store: database
+      ? new PostgresLocalAccessStore(
+        database,
+        {
+          workspaceId: "demo-workspace",
+          projectId: "cedar-roastery",
+        },
+        secret,
+      )
+      : new FileAccessStore({ rootDirectory, secret }),
     email: new MailpitEmailClient(localEmailConfigFromEnvironment(environment)),
     cookieName,
     clientRecipient,

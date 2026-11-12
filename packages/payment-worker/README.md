@@ -9,7 +9,7 @@ Private ESM package `@scopeledger/payment-worker`. It connects the proven ordere
 3. lets the domain reducer record the authenticated provider observation;
 4. stores a validated create approval link only after domain dispatch returns successfully.
 
-The local `FileApprovalLinkStore` is a private spike store. It uses one atomic file per operation, rejects changed links, synchronizes file/directory state and stores no credentials. Production integration should replace it with an authorized database/object contract and expose links only through current payer access.
+The local `FileApprovalLinkStore` remains a deterministic adapter-contract fixture. Real IP-02 execution uses `PostgresPayPalApprovalLinkStore`, which keys links by scoped operation, validates the recorded Order/environment basis and rejects changed replay.
 
 This package does not create identity, HTTP routes, worker scheduling, retries, provider reconciliation or live payment permission.
 

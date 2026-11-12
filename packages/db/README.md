@@ -8,7 +8,7 @@ Private ESM package `@scopeledger/db`, using pinned Kysely and node-postgres. Bu
 
 PostgreSQL is the authority boundary beneath ScopeLedger's human-authorized commerce agent. It preserves attributed source/context, exact versions, human decisions, durable financial intents, provider observations, holds, and history without compressing them into an opaque "AI approved" or "paid" status. The schema deliberately supports legitimate no-payment outcomes and prevents a model suggestion, browser return, or duplicate retry from becoming a financial fact.
 
-The initial versioned SQL migration is `src/migrations/001-ordered-consent.ts`. It runs transactionally under a schema-scoped advisory migration lock; unknown migration histories fail closed. Use a dedicated schema and a privileged migration connection; do not expose database access to clients.
+Reviewed SQL migrations live under `src/migrations/` and run sequentially under a schema-scoped advisory migration lock. Migration 001 establishes ordered consent; migration 002 adds normalized runtime persistence. Existing contiguous installations upgrade in place, fresh schemas receive every known migration, and unknown, gapped, empty-version or unversioned nonempty histories fail closed. Use a dedicated schema and a privileged migration connection; do not expose database access to clients.
 
 The dedicated target schema must **already exist**. Both `migrate` and `transaction` fail before their DDL/work callback if it is absent or inaccessible; they never fall through to a system namespace. `public`, `information_schema` and every `pg_*` name are forbidden targets. PostgreSQL URL parameters `options`, `search_path`, `searchpath` and `schema` are rejected rather than allowed to override the library's namespace settings. Each transaction reasserts a transaction-local path with the validated target first, then `pg_catalog`, with `pg_temp` last, defeating a pooled session's earlier `SET search_path` without leaking the override after release.
 
@@ -22,6 +22,9 @@ Raw `pool`/`kysely` access is reserved for trusted reviewed SQL and explicit sch
 - One unresolved attempt per obligation (`one_unresolved_attempt`).
 - One collectible obligation per collection family (`one_collectible_family`), **in addition to** attempt uniqueness. Obligation insertion requires the exact approved payable basis. Existing attempts prohibit disabling old collection through this initial protocol.
 - Stable operation/provider key/request hash and admitted chronology. Attempt attribution, established Order linkage and resolved outcomes cannot be rewritten.
+- One active scoped access challenge per recipient reference and role, immutable keyed code digests, exact expiry, five-attempt maximum and terminal verified/superseded history.
+- Immutable verified PayPal webhook receipts deduplicated by environment/merchant/event identity. Duplicate normalized content converges; conflicting content cannot overwrite the first receipt. Raw payloads are not stored.
+- Immutable PayPal approval links bound to one recorded create operation and Order. Exact replay is idempotent; changed Order or URL values conflict.
 
 Money is stored as strictly checked exact decimal **text**, not a scale-constrained numeric column that could silently round invalid input. SQL comparisons validate the approved basis; application arithmetic uses BigInt.
 
@@ -31,7 +34,9 @@ Ordinary commands take shared workspace/project policy fences, shared packet gua
 
 ## Isolated proof lifecycle
 
-`createIsolatedProofDatabase(url)` creates a cryptographically generated `ip01_<24 hex>` schema, applies migration 1, and returns an owned `dispose`. `validateProofSchema` rejects every other name. Cleanup drops only that newly owned schema; `public`, `pg_*`, user schemas and real records are never cleared. The runner must supply a disposable PostgreSQL database; the proof itself has no generic `DATABASE_URL` fallback.
+`PostgresAccessChallengeStore`, `PostgresPayPalWebhookReceiptStore` and `PostgresPayPalApprovalLinkStore` expose typed atomic runtime APIs. Challenge verification accepts only a caller-produced keyed digest; this package never receives a plaintext code and does not send email or sign browser sessions. Webhook insertion accepts already verified normalized data only. Approval-link validation is limited to matching PayPal HTTPS origins and the recorded operation/Order/environment.
+
+`createIsolatedProofDatabase(url)` creates a cryptographically generated `ip01_<24 hex>` schema, applies all reviewed migrations, and returns an owned `dispose`. `validateProofSchema` rejects every other name. Cleanup drops only that newly owned schema; `public`, `pg_*`, user schemas and real records are never cleared. The runner must supply a disposable PostgreSQL database; the proof itself has no generic `DATABASE_URL` fallback.
 
 These are relational/domain invariants, not an RLS/identity/provider-authentication implementation or a lawful-retention policy. The database owner remains trusted. This first proof intentionally has no content-erasure, paid-amendment closure, primary-failure or older-backup reopening path. Future production migrations must add authorized retention/role boundaries without silently changing canonical historical terms.
 

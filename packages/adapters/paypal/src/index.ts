@@ -286,14 +286,10 @@ export type PayPalWebhookReceipt = Readonly<{
   receivedAt: string;
 }>;
 
-export async function persistVerifiedPayPalWebhookReceipt(input: {
-  readonly rootDirectory: string;
+export function normalizeVerifiedPayPalWebhookReceipt(input: {
   readonly event: unknown;
   readonly receivedAt?: string;
-}): Promise<{
-  readonly duplicate: boolean;
-  readonly receipt: PayPalWebhookReceipt;
-}> {
+}): PayPalWebhookReceipt {
   const parsed = webhookEventSchema.safeParse(input.event);
   if (!parsed.success) {
     throw new PayPalAdapterError(
@@ -308,7 +304,7 @@ export async function persistVerifiedPayPalWebhookReceipt(input: {
       "Webhook receipt time was invalid",
     );
   }
-  const receipt: PayPalWebhookReceipt = Object.freeze({
+  return Object.freeze({
     schemaVersion: "scopeledger.paypal-webhook-receipt.v1",
     eventId: parsed.data.id,
     eventType: parsed.data.event_type,
@@ -319,6 +315,17 @@ export async function persistVerifiedPayPalWebhookReceipt(input: {
     verification: "paypal-postback-success",
     receivedAt,
   });
+}
+
+export async function persistVerifiedPayPalWebhookReceipt(input: {
+  readonly rootDirectory: string;
+  readonly event: unknown;
+  readonly receivedAt?: string;
+}): Promise<{
+  readonly duplicate: boolean;
+  readonly receipt: PayPalWebhookReceipt;
+}> {
+  const receipt = normalizeVerifiedPayPalWebhookReceipt(input);
   const root = resolve(input.rootDirectory);
   await mkdir(root, { recursive: true, mode: 0o700 });
   const receiptPath = resolve(root, `${receipt.eventId}.json`);

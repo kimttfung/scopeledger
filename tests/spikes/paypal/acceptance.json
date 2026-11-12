@@ -26,7 +26,8 @@
     "An owned real-PostgreSQL run admitted create and capture through durable intent, payer authorization, worker lease and post-commit PayPal transport",
     "The domain recorded authenticated create/capture observations and derived readiness ready without browser or fixture mutation",
     "Capture-event reconciliation re-fetches the authoritative provider capture and resolves exactly one admitted capture operation by Order ID",
-    "Refund retrieval validates the fixed PayPal origin and parent-capture link without issuing an automatic refund"
+    "Refund retrieval validates the fixed PayPal origin and parent-capture link without issuing an automatic refund",
+    "PostgreSQL persistence tests cover normalized webhook duplicate/conflict handling and immutable approval-link replay"
   ],
   "notProved": [
     "Lost create or capture response recovery and endpoint key-retention behavior",

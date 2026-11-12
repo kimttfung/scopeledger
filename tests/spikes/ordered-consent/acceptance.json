@@ -1,7 +1,7 @@
 {
   "task": "IP-01",
   "profile": "local-synthetic-postgresql-and-process-fault-proof",
-  "observedDate": "2026-11-09",
+  "observedDate": "2026-11-11",
   "command": "npm run test:ip01",
   "packages": {
     "@scopeledger/contracts": "0.1.0",
@@ -10,7 +10,7 @@
   },
   "schemaVersion": "scopeledger.published-unit.v1",
   "serializationVersion": "scopeledger.canonical-json.v1",
-  "sqlMigration": 1,
+  "sqlMigration": 2,
   "tooling": { "node": "26.0.0", "typescript": "6.0.3", "tsx": "4.23.15" },
   "database": {
     "engine": "PostgreSQL",
@@ -20,10 +20,11 @@
     "synchronousCommit": "on",
     "scope": "owned disposable database and one fresh generated schema per database test"
   },
-  "result": { "tests": 56, "passed": 56, "failed": 0, "skipped": 0, "cancelled": 0 },
+  "result": { "tests": 65, "passed": 65, "failed": 0, "skipped": 0, "cancelled": 0 },
   "inventory": {
     "canonical.test.ts": 4,
     "database-safety.test.ts": 3,
+    "persistence.test.ts": 9,
     "protocol.test.ts": 11,
     "races.test.ts": 19,
     "payments.test.ts": 13,
@@ -34,6 +35,9 @@
     "Immutable canonical bytes/digests and exact money/rationale",
     "Terminal decision, unresolved-attempt and collection-family SQL constraints",
     "Missing/reserved target rejection and transaction-local namespace reset prevent URL/pooled search-path redirection into protected schemas",
+    "Sequential reviewed migration upgrade/fresh installation with unknown, gapped and unversioned nonempty histories rejected",
+    "Atomic scoped access-challenge supersession and verification with keyed digests, exact expiry and five-attempt maximum",
+    "Verified normalized PayPal webhook receipt convergence and immutable operation-bound approval links",
     "Current grants, named-approver epochs and separately confirmed payer continuity before protected receipt replay/admission",
     "Cross-packet unknown impact and new-membership protection",
     "Atomic identified correction resolution and all 16 independent-hold subsets",

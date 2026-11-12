@@ -28,12 +28,92 @@ test("renders agreement and readiness facts from the PostgreSQL projection", asy
   await page.reload();
   await expect(page.getByText("PostgreSQL-backed demo")).toBeVisible();
   await expect(page.locator(".prototype-notice")).toContainText(
-    "Agreement and readiness facts are read from local PostgreSQL",
+    "Agreement facts are read from local PostgreSQL",
   );
   await expect(page.locator(".status-grid")).toContainText(
     "Client concern requires exact decision",
   );
   await expect(page.locator(".status-grid")).toContainText("Not recorded");
+});
+
+test("records an exact approval only after verified client access and preview", async ({
+  page,
+}) => {
+  let decisionRecorded = false;
+  await page.route("**/api/demo/review", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: true,
+        unitId: "unit-u1",
+        currentVersion: 2,
+        acceptedVersion: decisionRecorded ? 2 : null,
+        readiness: decisionRecorded ? "awaiting-payment" : "review-hold",
+        holds: decisionRecorded ? [] : [{
+          reason: "correction",
+          concernId: "layout-concern",
+        }],
+        workStartRecorded: false,
+      }),
+    });
+  });
+  await page.route("**/api/access/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        verified: true,
+        role: "client-approver",
+      }),
+    });
+  });
+  await page.route("**/api/demo/decision", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    const body = route.request().postDataJSON() as {
+      decision: string;
+      reviewedResponse: boolean;
+      authority: boolean;
+    };
+    expect(body).toEqual({
+      decision: "approve",
+      reviewedResponse: true,
+      authority: true,
+    });
+    decisionRecorded = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        recorded: true,
+        unitId: "unit-u1",
+        version: 2,
+        decision: "approve",
+        agreementStatus: "approved",
+        obligationCreated: true,
+        paymentStatus: "not-initiated",
+      }),
+    });
+  });
+
+  await page.reload();
+  await page.getByRole("checkbox", {
+    name: /I have read the studio response/,
+  }).check();
+  await page.getByRole("checkbox", {
+    name: /I am authorized to decide/,
+  }).check();
+  await page.getByRole("button", {
+    name: "Resolve concern and approve these terms",
+  }).click();
+  await page.getByRole("button", {
+    name: "Record this approval",
+  }).click();
+  await expect(page.getByText("Approval recorded for unit-u1")).toBeVisible();
+  await expect(page.locator(".status-grid")).toContainText("Approved");
+  await expect(page.locator(".status-grid")).toContainText("Awaiting payment");
+  await expect(page.getByText("no payment was initiated")).toBeVisible();
 });
 
 test("verifies a local client channel without implying authority", async ({
@@ -174,7 +254,7 @@ test("previews either decision without changing agreement or payment facts", asy
   await page.getByRole("checkbox", { name: /I have read the studio response/ }).check();
   await page.getByRole("checkbox", { name: /I am authorized to decide/ }).check();
   await page.getByRole("button", { name: "Resolve concern and decline this offer", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("would decline the version 2 offer");
+  await expect(page.getByRole("dialog")).toContainText("This outcome declines the version 2 offer");
   await page.getByRole("button", { name: "Return to review", exact: true }).click();
   await page.getByRole("button", { name: "Decline and keep my concern open", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("leaving your concern open");
@@ -275,7 +355,9 @@ test("wraps a long source at 320px without truncating its text or line breaks", 
   await page.getByRole("button", { name: "I believe this was already agreed", exact: true }).click();
   await page.getByRole("textbox", { name: /What do you believe was already agreed/ }).fill("The layout was already included.");
   const source = "  https://example.test/" + "A".repeat(240) + "\nAccepted email excerpt.  ";
-  await page.getByRole("textbox", { name: /Source or explanation/ }).fill(source);
+  const sourceInput = page.getByRole("textbox", { name: /Source or explanation/ });
+  await sourceInput.fill(source);
+  await expect(sourceInput).toHaveValue(source);
   await page.getByRole("button", { name: "Preview what would be shared", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const widths = await dialog.evaluate((element) => ({

@@ -1,0 +1,29 @@
+{
+  "task": "IP-06-client-decision-partial",
+  "profile": "local-verified-client-postgresql-decision",
+  "observedDate": "2026-11-12",
+  "result": {
+    "decision": "approve",
+    "version": 2,
+    "acceptedVersion": 2,
+    "obligations": 1,
+    "paymentAttempts": 0,
+    "paymentFacts": 0,
+    "readiness": "awaiting-payment"
+  },
+  "evidence": [
+    "The browser session was verified as local client-approver through a PostgreSQL-backed challenge",
+    "The decision route used the server-owned version and digest",
+    "The identified correction response was resolved atomically with approval",
+    "The agreement and obligation were recorded in PostgreSQL",
+    "No payment attempt or payment fact was created"
+  ],
+  "notProved": [
+    "Public recipient identity or legal authority",
+    "Payment initiation from the main review",
+    "Cross-browser revocation and recovery",
+    "Question/correction submission",
+    "Production deployment or real customer consent"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

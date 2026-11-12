@@ -2,8 +2,12 @@ import {
   PayPalAdapterError,
   PayPalSandboxClient,
   payPalConfigFromEnvironment,
-  persistVerifiedPayPalWebhookReceipt,
+  normalizeVerifiedPayPalWebhookReceipt,
 } from "@scopeledger/paypal-adapter";
+import {
+  PostgresPayPalWebhookReceiptStore,
+} from "@scopeledger/db";
+import { protocolDatabase } from "../../../../lib/protocol-database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +51,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const client = new PayPalSandboxClient(payPalConfigFromEnvironment());
+    const config = payPalConfigFromEnvironment();
+    const client = new PayPalSandboxClient(config);
     await client.verifyWebhook({
       transmissionId: requiredHeader(request, "paypal-transmission-id"),
       transmissionTime: requiredHeader(request, "paypal-transmission-time"),
@@ -57,10 +62,30 @@ export async function POST(request: Request): Promise<Response> {
       event,
     });
 
-    const result = await persistVerifiedPayPalWebhookReceipt({
-      rootDirectory: process.env.PAYPAL_WEBHOOK_INBOX_DIR
-        ?? ".paypal-sandbox/webhooks",
+    const receipt = normalizeVerifiedPayPalWebhookReceipt({
       event,
+    });
+    const database = protocolDatabase();
+    if (!database) {
+      throw new PayPalAdapterError(
+        "WEBHOOK_STORAGE_FAILED",
+        "PostgreSQL webhook storage is unavailable",
+      );
+    }
+    const result = await new PostgresPayPalWebhookReceiptStore(
+      database,
+    ).insertVerified({
+      workspaceId: "demo-workspace",
+      environment: config.environment,
+      merchantId: config.merchantId,
+      eventId: receipt.eventId,
+      eventType: receipt.eventType,
+      resourceType: receipt.resourceType,
+      resourceId: receipt.resourceId,
+      resourceStatus: receipt.resourceStatus,
+      providerCreatedAt: receipt.providerCreatedAt,
+      receivedAt: receipt.receivedAt,
+      verificationReference: `paypal-postback-${receipt.eventId}`,
     });
     return new Response(null, { status: result.duplicate ? 200 : 204 });
   } catch (error) {

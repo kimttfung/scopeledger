@@ -59,6 +59,8 @@
     "test:gemini:local": "npm run build:gemini && tsx --test tests/spikes/gemini/*.test.ts",
     "test:auth0:local": "tsx --test tests/spikes/auth0/*.test.ts",
     "test:access:local": "npm run build:access && tsx --test tests/spikes/access/*.test.ts",
+    "test:client-decision": "tsx --test tests/spikes/client-decision/*.test.ts",
+    "test:analysis-ui": "tsx --test tests/spikes/analysis-ui/*.test.ts",
     "test:email:local": "npm run build:email && tsx --test tests/spikes/email/*.test.ts",
     "test:parser:local": "npm run build:parser && tsx --test tests/spikes/parser/*.test.ts",
     "test:payment-worker": "npm run build:payment-worker && tsx --test tests/spikes/payment-worker/*.test.ts"

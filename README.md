@@ -101,7 +101,7 @@ Real `CHECKOUT.ORDER.APPROVED` and `PAYMENT.CAPTURE.COMPLETED` sandbox events al
 
 IP-02 remains incomplete until the same provider behavior is exercised through durable ordered-consent dispatch, real duplicate/reordering/invalid-event cases, lost-response recovery, refund reads and same-attempt authorization recovery.
 
-`@scopeledger/payment-worker` now connects the domain dispatch callback to the PayPal adapter. It stores a validated approval link only after the domain has recorded the provider observation; capture operations never create a link. Its local file store is a private spike boundary, not the final database-backed application worker.
+`@scopeledger/payment-worker` now connects the domain dispatch callback to the PayPal adapter. It stores a validated approval link only after the domain has recorded the provider observation; capture operations never create a link. The real IP-02 runner now uses the immutable PostgreSQL approval-link store rather than the earlier local file spike.
 
 One additional fresh USD 1.00 flow has now run through an owned real-PostgreSQL database, exact agreement/payer commands, durable create and capture intents, worker lease admission, the PayPal adapter and authenticated observation reduction. The original attempt resumed after buyer approval and the domain derived `ready`; no fixture or browser callback set that state.
 
@@ -139,7 +139,7 @@ An explicitly configured `IP01_DATABASE_URL` may select an existing disposable d
 
 The proof's failure profile is application-process crash/recovery and deterministic local faults. It does not establish host/primary failure tolerance, older-backup reopening, actual PayPal behavior, legal clearance, or production readiness.
 
-The verified IP-01 suite has **56 passing cases, zero skipped**, including both commit orders for the required races, authoritative capture-to-operation reconciliation and six actual SIGKILL/readback boundaries. Its versioned [acceptance manifest](tests/spikes/ordered-consent/acceptance.json) distinguishes local PostgreSQL/fault evidence from unproved provider and release gates. See the [proof inventory](tests/spikes/ordered-consent/README.md) and [domain API boundaries](packages/domain/README.md).
+The verified IP-01 suite has **65 passing cases, zero skipped**, including both commit orders for the required races, runtime-record persistence, authoritative capture-to-operation reconciliation and six actual SIGKILL/readback boundaries. Its versioned [acceptance manifest](tests/spikes/ordered-consent/acceptance.json) distinguishes local PostgreSQL/fault evidence from unproved provider and release gates. See the [proof inventory](tests/spikes/ordered-consent/README.md) and [domain API boundaries](packages/domain/README.md).
 
 Production migration targets must be explicitly created dedicated schemas. Protected or missing namespaces and namespace-changing connection-URL options fail closed. Transactions reset their schema locally rather than trusting a previous pooled session's `search_path`.
 
@@ -154,7 +154,9 @@ npm run dev:db:migrate
 npm run seed:demo
 ```
 
-The Cedar Roastery seed creates version 1, the client correction, provider response and version 2 through ordinary domain commands. The main review reads a no-store projection for agreement, payment and readiness facts; browser actions remain previews. Restart `npm run dev` after first generating the database environment so Next.js loads the connection.
+The Cedar Roastery seed creates version 1, the client correction, provider response and version 2 through ordinary domain commands. The main review reads a no-store projection for agreement, payment and readiness facts. After local client-approver channel verification, approve/decline remains preview-first but an explicit record action submits the exact server-owned version/digest and identified concern response. Approval creates agreement/obligation state only; it never initiates payment.
+
+Migration 002 persists local access challenges, normalized verified PayPal webhook receipts and immutable PayPal approval links in PostgreSQL. Codes remain keyed digests, raw webhook bodies are not stored, and changed duplicate provider identities fail closed.
 
 Stop only the owned container with `npm run dev:db:stop`; the persistent volume is retained. The [acceptance manifest](tests/spikes/demo-db/acceptance.json) records the current read-only integration boundary.
 
@@ -196,12 +198,14 @@ Package and spike documentation records the public implementation boundaries and
 ## Prototype boundaries
 
 - All studio, client, source, scope, and price records are the synthetic fixture defined in the UX specification.
-- Source context, historical terms, acknowledgment controls, decision previews, question/correction previews, and printing are interactive.
-- No button records consent, submits a concern, resolves a hold, verifies identity, invokes a model, or initiates payment. Decision dialogs explain hypothetical outcomes without changing the displayed commercial facts.
+- Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider analysis, and printing are interactive.
+- A verified local client approver can record the exact seeded approve/decline decision after preview. No browser button initiates payment, records work start, or treats model output as authority. Question/correction submission remains preview-only.
 - Form drafts live only in page memory. They are not saved to a server and are lost on refresh. Use synthetic text only.
 - Question and source fields each allow 10,000 Unicode code points. Longer input is preserved with a validation error, not silently truncated; previewing is blocked until it is corrected.
-- No credentials, external service configuration, database, or environment file is required.
+- The static client preview can still render without external configuration. Connected identity, database, model, email and payment capabilities require the corresponding ignored local environment.
 - Browser previews and automated checks do not establish WCAG conformance or production readiness.
+
+The protected `/provider/analysis` route now accepts one attested PDF, runs isolated extraction and optionally prepares authenticated Gemini candidates. Results are ephemeral, exact-evidence-linked, human-review-required and publication-blocked.
 
 ## Provider/staff identity
 

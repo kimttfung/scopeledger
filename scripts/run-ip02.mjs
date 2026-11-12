@@ -16,6 +16,7 @@ import {
   freezePublishedUnit,
 } from "@scopeledger/contracts";
 import {
+  PostgresPayPalApprovalLinkStore,
   ProtocolDatabase,
   sql,
 } from "@scopeledger/db";
@@ -27,7 +28,6 @@ import {
   payPalConfigFromEnvironment,
 } from "@scopeledger/paypal-adapter";
 import {
-  FileApprovalLinkStore,
   PayPalPaymentWorker,
 } from "@scopeledger/payment-worker";
 
@@ -378,7 +378,7 @@ async function seedAndCreate() {
     const worker = new PayPalPaymentWorker(
       store,
       new PayPalSandboxClient(config),
-      new FileApprovalLinkStore(resolve(".paypal-sandbox/approval-links")),
+      new PostgresPayPalApprovalLinkStore(protocol),
     );
     const result = await worker.run(lease, payer);
     if (!result.approvalLink) throw new Error("Create dispatch did not produce an approval link");
@@ -443,7 +443,7 @@ async function capture() {
     const worker = new PayPalPaymentWorker(
       store,
       new PayPalSandboxClient(config),
-      new FileApprovalLinkStore(resolve(".paypal-sandbox/approval-links")),
+      new PostgresPayPalApprovalLinkStore(protocol),
     );
     await worker.run(lease, state.payer);
     const inspected = await store.inspectUnit(provider, unitId);

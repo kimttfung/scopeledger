@@ -20,6 +20,7 @@ export default defineConfig({
     env: {
       ...process.env,
       SCOPELEDGER_AUTH0_DISABLED: "1",
+      SCOPELEDGER_DEMO_DB_DISABLED: "1",
     },
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

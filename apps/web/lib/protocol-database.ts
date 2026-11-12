@@ -5,6 +5,7 @@ type ProtocolDatabaseGlobal = typeof globalThis & {
 };
 
 export function protocolDatabase(): ProtocolDatabase | null {
+  if (process.env.SCOPELEDGER_DEMO_DB_DISABLED === "1") return null;
   const connectionString = process.env.SCOPELEDGER_DATABASE_URL;
   const schema = process.env.SCOPELEDGER_DATABASE_SCHEMA;
   if (!connectionString || !schema) return null;

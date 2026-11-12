@@ -19,6 +19,24 @@ type ReviewProjection = {
   holds: { reason: string; concernId: string | null }[];
   workStartRecorded: boolean;
 };
+type AccessProjection = {
+  verified: boolean;
+  role?: "client-approver" | "payer";
+};
+type RecordedDecision = {
+  ok: true;
+  recorded: true;
+  unitId: string;
+  version: number;
+  decision: "approve" | "decline";
+  agreementStatus: "approved" | "declined";
+  obligationCreated: boolean;
+  paymentStatus: "not-initiated";
+};
+type DecisionFailure = {
+  ok: false;
+  code: string;
+};
 
 const TEXT_LIMIT = 10_000;
 const limitError = "This field exceeds 10,000 Unicode code points. Shorten it before previewing; your text has been kept.";
@@ -44,6 +62,39 @@ const sections = [
   ["context", "Why this changed"],
   ["decision", "Your decision"],
 ] as const;
+
+async function fetchReviewProjection(): Promise<ReviewProjection | null> {
+  const response = await fetch("/api/demo/review", { cache: "no-store" });
+  if (!response.ok) return null;
+  const body = await response.json() as ReviewProjection;
+  return body.connected ? body : null;
+}
+
+async function fetchAccessProjection(): Promise<AccessProjection | null> {
+  const response = await fetch("/api/access/session", { cache: "no-store" });
+  if (!response.ok) return null;
+  return response.json() as Promise<AccessProjection>;
+}
+
+function decisionErrorMessage(code: string): string {
+  switch (code) {
+    case "CLIENT_ACCESS_REQUIRED":
+    case "CLIENT_APPROVER_REQUIRED":
+    case "DECISION_NOT_AUTHORIZED":
+      return "Verified local client-approver access is required to record this decision.";
+    case "APPROVAL_AUTHORITY_REQUIRED":
+      return "Confirm your authority before recording an approval.";
+    case "DECISION_ALREADY_RECORDED":
+      return "A terminal decision is already recorded for these exact terms. Refresh the review before continuing.";
+    case "DECISION_STATE_CHANGED":
+    case "DECISION_NOT_AVAILABLE":
+      return "The recorded review state changed. Refresh and review the current terms before trying again.";
+    case "INVALID_DECISION_INPUT":
+      return "Both review acknowledgments must be explicit before this decision can be recorded.";
+    default:
+      return "The decision could not be recorded safely. Nothing was shown as successful.";
+  }
+}
 
 function InfoIcon() {
   return (
@@ -73,6 +124,10 @@ export default function ReviewRequest() {
   const [messageError, setMessageError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [projection, setProjection] = useState<ReviewProjection | null>(null);
+  const [access, setAccess] = useState<AccessProjection | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordError, setRecordError] = useState("");
+  const [recordedDecision, setRecordedDecision] = useState<RecordedDecision | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -86,6 +141,14 @@ export default function ReviewRequest() {
   const sourceTooLong = messageKind === "correction" && sourceLength > TEXT_LIMIT;
   const messageIssue = messageError || (messageTooLong ? limitError : "");
   const sourceIssue = sourceTooLong ? limitError : "";
+  const canRecord = Boolean(
+    projection
+    && access?.verified
+    && access.role === "client-approver",
+  );
+  const terminalDecision = recordedDecision?.decision
+    ?? (projection?.acceptedVersion ? "approve" : null);
+  const decisionRecorded = terminalDecision !== null;
 
   useEffect(() => {
     if (preview && !dialogRef.current?.open) {
@@ -95,20 +158,55 @@ export default function ReviewRequest() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/demo/review", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const body = await response.json() as ReviewProjection;
-        return body.connected ? body : null;
-      })
-      .then((body) => {
-        if (active && body) setProjection(body);
-      })
-      .catch(() => undefined);
+    void Promise.all([
+      fetchReviewProjection().catch(() => null),
+      fetchAccessProjection().catch(() => null),
+    ]).then(([review, localAccess]) => {
+      if (active) {
+        if (review) setProjection(review);
+        if (localAccess) setAccess(localAccess);
+      }
+    });
     return () => {
       active = false;
     };
   }, []);
+
+  async function recordDecision(decision: "approve" | "decline") {
+    setRecording(true);
+    setRecordError("");
+    try {
+      const response = await fetch("/api/demo/decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          reviewedResponse: responseRead,
+          authority: hasAuthority,
+        }),
+      });
+      const body = await response.json() as RecordedDecision | DecisionFailure;
+      if (!response.ok || !body.ok) {
+        setRecordError(decisionErrorMessage(body.ok ? "" : body.code));
+        return;
+      }
+      const refreshed = await fetchReviewProjection().catch(() => null);
+      if (refreshed) {
+        setProjection(refreshed);
+      }
+      setRecordedDecision(body);
+      dialogRef.current?.close();
+    } catch {
+      setRecordError(decisionErrorMessage("DECISION_RECORDING_FAILED"));
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  function openDecisionPreview(decision: "approve" | "decline") {
+    setRecordError("");
+    setPreview(decision);
+  }
 
   function showSource() {
     const details = sourceDetailsRef.current;
@@ -188,9 +286,14 @@ export default function ReviewRequest() {
       <div className="prototype-notice">
         <p>
           {projection
-            ? "Agreement and readiness facts are read from local PostgreSQL. Actions remain previews."
+            ? canRecord
+              ? "Agreement facts are read from local PostgreSQL. A verified client approver can record an outcome only after previewing it; payment remains separate."
+              : "Agreement facts are read from local PostgreSQL. Actions remain previews until local client-approver access is verified."
             : "Explore the review. Nothing here is sent, approved, or charged."}
         </p>
+        {projection && !canRecord && (
+          <a href="/access-demo">Verify local client access</a>
+        )}
         <a href="#about-prototype">About this prototype</a>
       </div>
 
@@ -336,9 +439,11 @@ export default function ReviewRequest() {
                 <div>
                   <dt>Agreement</dt>
                   <dd>
-                    {projection?.acceptedVersion
+                    {terminalDecision === "approve"
                       ? "Approved"
-                      : "Awaiting decision"}
+                      : terminalDecision === "decline"
+                        ? "Declined"
+                        : "Awaiting decision"}
                     <span className="quiet">
                       {" / v"}
                       {projection?.currentVersion ?? 2}
@@ -348,11 +453,13 @@ export default function ReviewRequest() {
                 <div>
                   <dt>Payment</dt>
                   <dd>
-                    {projection?.readiness === "ready"
-                      ? "Verified"
-                      : projection?.acceptedVersion
-                        ? "Awaiting payment"
-                        : "Unavailable until approval"}
+                    {terminalDecision === "decline"
+                      ? "Not initiated"
+                      : projection?.readiness === "ready"
+                        ? "Verified"
+                        : projection?.acceptedVersion
+                          ? "Awaiting payment"
+                          : "Unavailable until approval"}
                   </dd>
                 </div>
                 <div>
@@ -360,11 +467,13 @@ export default function ReviewRequest() {
                   <dd>
                     {projection?.readiness === "ready" ? "Ready" : "On hold"}
                     <span className="status-reason">
-                      {projection?.readiness === "review-hold"
-                        ? "Client concern requires exact decision"
-                        : projection?.acceptedVersion
-                          ? "Payment or prerequisites required"
-                          : "Decision and payment required"}
+                      {terminalDecision === "decline"
+                        ? "Offer declined; no payment initiated"
+                        : projection?.readiness === "review-hold"
+                          ? "Client concern requires exact decision"
+                          : projection?.acceptedVersion
+                            ? "Payment or prerequisites required"
+                            : "Decision and payment required"}
                     </span>
                   </dd>
                 </div>
@@ -375,11 +484,24 @@ export default function ReviewRequest() {
                   </dd>
                 </div>
               </dl>
+              {recordedDecision && (
+                <p className="action-note" role="status">
+                  {recordedDecision.decision === "approve"
+                    ? `Approval recorded for ${recordedDecision.unitId}, version ${recordedDecision.version}. The agreement and payment obligation now exist; no payment was initiated.`
+                    : `Decline recorded for ${recordedDecision.unitId}, version ${recordedDecision.version}. No agreement, obligation, or payment was created.`}
+                </p>
+              )}
               <div className="decision-intro">
                 <h3>You are reviewing Unit U1, version 2.</h3>
-                <p>Layout concern C1 is awaiting your decision on response R1. A resolve-and-decide action would clear only that concern; other holds would still apply.</p>
+                <p>
+                  {decisionRecorded
+                    ? terminalDecision === "approve"
+                      ? "Version 2 is approved and the identified layout concern response is resolved. Payment remains a separate action."
+                      : "Version 2 is declined and the identified layout concern response is resolved. No payment is available."
+                    : "Layout concern C1 is awaiting your decision on response R1. A resolve-and-decide action would clear only that concern; other holds would still apply."}
+                </p>
               </div>
-              <fieldset className="attestations">
+              <fieldset className="attestations" disabled={decisionRecorded}>
                 <legend className="sr-only">Review and authority acknowledgments</legend>
                 <label>
                   <input type="checkbox" checked={responseRead} onChange={(event) => setResponseRead(event.target.checked)} />
@@ -391,22 +513,26 @@ export default function ReviewRequest() {
                 </label>
               </fieldset>
               <div className="decision-actions">
-                <button className="button decision-button" disabled={!readyToPreview} onClick={() => setPreview("approve")}>
+                <button className="button decision-button" disabled={!readyToPreview || decisionRecorded} onClick={() => openDecisionPreview("approve")}>
                   Resolve concern and approve these terms
                 </button>
-                <button className="button decision-button" disabled={!readyToPreview} onClick={() => setPreview("decline")}>
+                <button className="button decision-button" disabled={!readyToPreview || decisionRecorded} onClick={() => openDecisionPreview("decline")}>
                   Resolve concern and decline this offer
                 </button>
               </div>
               <p className="action-note" aria-live="polite">
-                {readyToPreview
-                  ? "Both acknowledgments are checked. You can preview either outcome; nothing will be recorded."
-                  : "Read the response and confirm your authority to preview a resolve-and-decide outcome."}
+                {decisionRecorded
+                  ? `${terminalDecision === "approve" ? "An approval" : "A decline"} is recorded for version 2.`
+                  : readyToPreview
+                    ? canRecord
+                      ? "Both acknowledgments are checked. Preview an outcome, then explicitly record it. Recording approval does not initiate payment."
+                      : "Both acknowledgments are checked. You can preview either outcome; verified local client-approver access is required to record it."
+                    : "Read the response and confirm your authority to preview a resolve-and-decide outcome."}
               </p>
               <div className="alternative-actions">
                 <button className="text-button" onClick={(event) => openMessage("question", event.currentTarget)}>Ask a question</button>
                 <button className="text-button" onClick={(event) => openMessage("correction", event.currentTarget)}>I believe this was already agreed</button>
-                <button className="text-button" onClick={() => setPreview("decline-open")}>Decline and keep my concern open</button>
+                <button className="text-button" disabled={decisionRecorded} onClick={() => setPreview("decline-open")}>Decline and keep my concern open</button>
               </div>
 
               {messageKind && (
@@ -441,7 +567,14 @@ export default function ReviewRequest() {
         </main>
 
         <footer className="page-footer" id="about-prototype">
-          <div><strong>A shared record, not an AI verdict.</strong><p>Synthetic project and proposed terms. No identity verification, consent recording, model processing, or payment integration is connected.</p></div>
+          <div>
+            <strong>A shared record, not an AI verdict.</strong>
+            <p>
+              {projection
+                ? "Synthetic project and proposed terms backed by local PostgreSQL. Only a verified local client approver can record the displayed decision; payment remains a separate action."
+                : "Synthetic project and proposed terms. No identity verification, consent recording, model processing, or payment integration is connected."}
+            </p>
+          </div>
           <button className="text-button" onClick={() => window.print()}>Print this review</button>
         </footer>
       </div>
@@ -453,10 +586,14 @@ export default function ReviewRequest() {
               <h2 id="preview-title">{previewTitles[preview]}</h2>
               <button className="icon-button" aria-label="Close preview" onClick={() => dialogRef.current?.close()}><span aria-hidden="true">&times;</span></button>
             </div>
-            <p className="preview-disclaimer" id="preview-disclaimer">Local prototype only. Nothing is approved, declined, sent, resolved, or charged.</p>
+            <p className="preview-disclaimer" id="preview-disclaimer">
+              {(preview === "approve" || preview === "decline") && canRecord
+                ? "Preview only. Nothing has been recorded yet. Use the explicit record action below to submit this exact outcome."
+                : "Local prototype only. Nothing is approved, declined, sent, resolved, or charged."}
+            </p>
             <p className="dialog-version">Unit U1 / Version 2 / Northstar Studio</p>
-            {preview === "approve" && <p>In the full product, this would approve the exact USD 300.00 terms and resolve the identified layout concern only. Payment would be a separate, authorized next step. Approval would not mean paid, work started, or delivery accepted.</p>}
-            {preview === "decline" && <p>In the full product, this would decline the version 2 offer and acknowledge the identified response to your layout concern. It would not approve scope or initiate a payment. Other holds would remain.</p>}
+            {preview === "approve" && <p>This outcome approves the exact USD 300.00 terms and resolves the identified layout concern only. Recording it creates agreement and obligation state. Payment remains a separate, authorized next step; approval does not mean paid, work started, or delivery accepted.</p>}
+            {preview === "decline" && <p>This outcome declines the version 2 offer and acknowledges the identified response to your layout concern. It does not approve scope, create a payment obligation, or initiate payment. Other holds remain.</p>}
             {preview === "decline-open" && <p>In the full product, this would decline the offer while leaving your concern open. It would not acknowledge the studio response, release correction holds, or undo existing agreements.</p>}
             {(preview === "question" || preview === "correction") && (
               <>
@@ -467,6 +604,23 @@ export default function ReviewRequest() {
                 <p>Only an actual, authorized submission in the full product could create a review hold. This preview creates no record or hold.</p>
               </>
             )}
+            {(preview === "approve" || preview === "decline") && canRecord && !decisionRecorded && (
+              <button
+                className="button"
+                disabled={recording}
+                onClick={() => void recordDecision(preview)}
+              >
+                {recording
+                  ? "Recording…"
+                  : preview === "approve"
+                    ? "Record this approval"
+                    : "Record this decline"}
+              </button>
+            )}
+            {(preview === "approve" || preview === "decline") && projection && !canRecord && (
+              <p className="field-help">This remains a preview until local client-approver access is verified.</p>
+            )}
+            {recordError && <p className="field-error" role="alert">{recordError}</p>}
             <button className="button dialog-return" onClick={() => dialogRef.current?.close()}>Return to review</button>
           </>
         )}
