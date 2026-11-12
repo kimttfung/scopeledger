@@ -4,6 +4,38 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("renders agreement and readiness facts from the PostgreSQL projection", async ({
+  page,
+}) => {
+  await page.route("**/api/demo/review", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: true,
+        unitId: "unit-u1",
+        currentVersion: 2,
+        acceptedVersion: null,
+        readiness: "review-hold",
+        holds: [{
+          reason: "correction",
+          concernId: "layout-concern",
+        }],
+        workStartRecorded: false,
+      }),
+    });
+  });
+  await page.reload();
+  await expect(page.getByText("PostgreSQL-backed demo")).toBeVisible();
+  await expect(page.locator(".prototype-notice")).toContainText(
+    "Agreement and readiness facts are read from local PostgreSQL",
+  );
+  await expect(page.locator(".status-grid")).toContainText(
+    "Client concern requires exact decision",
+  );
+  await expect(page.locator(".status-grid")).toContainText("Not recorded");
+});
+
 test("verifies a local client channel without implying authority", async ({
   page,
 }) => {

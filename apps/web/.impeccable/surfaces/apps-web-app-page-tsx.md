@@ -16,6 +16,7 @@ Product framing: this client surface is one step in a human-authorized fair-comm
 
 Implementation inventory:
 - Header: text wordmark, studio identity, synthetic-prototype label, client-preview context; semantic HTML/CSS.
+- Connected demo status: when the local PostgreSQL projection is available, the label and four factual status cells reflect database state; all decision controls remain preview-only.
 - In-page navigation: four ordered section anchors, cobalt indices, no provider workspace sidebar; semantic HTML/CSS.
 - Intro: compact page title, exact unit/version, reviewed-context explanation; semantic text.
 - Included-work note: one information glyph and two informational items, never checkboxes or prices; SVG/HTML/CSS.

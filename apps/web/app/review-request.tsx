@@ -4,6 +4,21 @@ import { useEffect, useRef, useState } from "react";
 
 type Preview = "approve" | "decline" | "decline-open" | "question" | "correction";
 type MessageKind = "question" | "correction";
+type ReviewProjection = {
+  connected: true;
+  unitId: string;
+  currentVersion: number | null;
+  acceptedVersion: number | null;
+  readiness:
+    | "awaiting-agreement"
+    | "review-hold"
+    | "awaiting-payment"
+    | "awaiting-prerequisite"
+    | "financial-recheck"
+    | "ready";
+  holds: { reason: string; concernId: string | null }[];
+  workStartRecorded: boolean;
+};
 
 const TEXT_LIMIT = 10_000;
 const limitError = "This field exceeds 10,000 Unicode code points. Shorten it before previewing; your text has been kept.";
@@ -57,6 +72,7 @@ export default function ReviewRequest() {
   const [allowModel, setAllowModel] = useState(false);
   const [messageError, setMessageError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [projection, setProjection] = useState<ReviewProjection | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -76,6 +92,23 @@ export default function ReviewRequest() {
       dialogRef.current?.showModal();
     }
   }, [preview]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/demo/review", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const body = await response.json() as ReviewProjection;
+        return body.connected ? body : null;
+      })
+      .then((body) => {
+        if (active && body) setProjection(body);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function showSource() {
     const details = sourceDetailsRef.current;
@@ -145,13 +178,19 @@ export default function ReviewRequest() {
             ScopeLedger<span className="wordmark-dot" aria-hidden="true">.</span>
           </a>
           <span className="studio-name">Northstar Studio</span>
-          <span className="prototype-label">Synthetic prototype</span>
+          <span className="prototype-label">
+            {projection ? "PostgreSQL-backed demo" : "Synthetic prototype"}
+          </span>
           <span className="role-label">Client review preview</span>
         </div>
       </header>
 
       <div className="prototype-notice">
-        <p>Explore the review. Nothing here is sent, approved, or charged.</p>
+        <p>
+          {projection
+            ? "Agreement and readiness facts are read from local PostgreSQL. Actions remain previews."
+            : "Explore the review. Nothing here is sent, approved, or charged."}
+        </p>
         <a href="#about-prototype">About this prototype</a>
       </div>
 
@@ -294,10 +333,47 @@ export default function ReviewRequest() {
             <SectionHeading number="04">Your decision on version 2</SectionHeading>
             <div className="section-content">
               <dl className="status-grid">
-                <div><dt>Agreement</dt><dd>Awaiting decision <span className="quiet">/ v2</span></dd></div>
-                <div><dt>Payment</dt><dd>Unavailable until approval</dd></div>
-                <div><dt>Additional work</dt><dd>On hold <span className="status-reason">Decision and payment required</span></dd></div>
-                <div><dt>Work start</dt><dd>Not recorded</dd></div>
+                <div>
+                  <dt>Agreement</dt>
+                  <dd>
+                    {projection?.acceptedVersion
+                      ? "Approved"
+                      : "Awaiting decision"}
+                    <span className="quiet">
+                      {" / v"}
+                      {projection?.currentVersion ?? 2}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Payment</dt>
+                  <dd>
+                    {projection?.readiness === "ready"
+                      ? "Verified"
+                      : projection?.acceptedVersion
+                        ? "Awaiting payment"
+                        : "Unavailable until approval"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Additional work</dt>
+                  <dd>
+                    {projection?.readiness === "ready" ? "Ready" : "On hold"}
+                    <span className="status-reason">
+                      {projection?.readiness === "review-hold"
+                        ? "Client concern requires exact decision"
+                        : projection?.acceptedVersion
+                          ? "Payment or prerequisites required"
+                          : "Decision and payment required"}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Work start</dt>
+                  <dd>
+                    {projection?.workStartRecorded ? "Recorded" : "Not recorded"}
+                  </dd>
+                </div>
               </dl>
               <div className="decision-intro">
                 <h3>You are reviewing Unit U1, version 2.</h3>

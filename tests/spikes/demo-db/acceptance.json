@@ -1,0 +1,35 @@
+{
+  "task": "IP-06-foundation-partial",
+  "profile": "persistent-local-postgresql-review-projection",
+  "observedDate": "2026-11-12",
+  "database": {
+    "engine": "PostgreSQL",
+    "version": "17.11",
+    "bind": "127.0.0.1:5433",
+    "fsync": "on",
+    "synchronousCommit": "on",
+    "persistentOwnedVolume": true
+  },
+  "result": {
+    "currentVersion": 2,
+    "acceptedVersion": null,
+    "readiness": "review-hold",
+    "activeHold": "correction",
+    "browserWritesEnabled": false
+  },
+  "evidence": [
+    "The database container and volume carry explicit ScopeLedger ownership labels",
+    "The protocol schema migrated through the normal migration boundary",
+    "Version 1, correction, response and version 2 were created through domain commands",
+    "The no-store server route returned the expected unit projection",
+    "The browser projection changed only factual status labels and retained preview-only actions"
+  ],
+  "notProved": [
+    "Client decision mutation through the browser",
+    "Database-backed local access challenges",
+    "Application payment initiation from the review UI",
+    "Multi-instance deployment, backup, restore or high availability",
+    "Production role separation or public data permission"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

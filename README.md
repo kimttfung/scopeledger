@@ -143,6 +143,21 @@ The verified IP-01 suite has **56 passing cases, zero skipped**, including both 
 
 Production migration targets must be explicitly created dedicated schemas. Protected or missing namespaces and namespace-changing connection-URL options fail closed. Transactions reset their schema locally rather than trusting a previous pooled session's `search_path`.
 
+### Persistent local review state
+
+The development demo can run an owned PostgreSQL service on `127.0.0.1:5433` with an owned persistent Docker volume:
+
+```sh
+npm run prepare:dev-db
+npm run dev:db:start
+npm run dev:db:migrate
+npm run seed:demo
+```
+
+The Cedar Roastery seed creates version 1, the client correction, provider response and version 2 through ordinary domain commands. The main review reads a no-store projection for agreement, payment and readiness facts; browser actions remain previews. Restart `npm run dev` after first generating the database environment so Next.js loads the connection.
+
+Stop only the owned container with `npm run dev:db:stop`; the persistent volume is retained. The [acceptance manifest](tests/spikes/demo-db/acceptance.json) records the current read-only integration boundary.
+
 ### Independent local analysis validation
 
 ```sh

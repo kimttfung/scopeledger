@@ -13,6 +13,8 @@
   "dependencies": {
     "@auth0/nextjs-auth0": "4.33.0",
     "@scopeledger/access": "0.1.0",
+    "@scopeledger/db": "0.1.0",
+    "@scopeledger/domain": "0.1.0",
     "@scopeledger/email-adapter": "0.1.0",
     "@scopeledger/paypal-adapter": "0.1.0",
     "jose": "6.2.17",
