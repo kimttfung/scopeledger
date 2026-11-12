@@ -88,6 +88,14 @@ export default async function ProviderPage() {
           publishing or payment administration. Sign out and complete the
           configured Auth0 verification flow.
         </p>
+        <ul>
+          <li>
+            Verified email claim: {assurance.emailVerified ? "present" : "missing"}
+          </li>
+          <li>
+            MFA assurance claim: {assurance.mfaVerified ? "present" : "missing"}
+          </li>
+        </ul>
         <p>
           <a href="/auth/logout">Sign out of this provider session</a>
         </p>
