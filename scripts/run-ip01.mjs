@@ -184,13 +184,16 @@ export async function main() {
     "ordered-consent",
     "analysis-persistence",
     "h1-authoring-foundation",
+    "publication-foundation",
+    "provider-participants",
+    "records-export",
   ]);
   if (
     !supportedSuites.has(suite)
     || arguments_.some((argument) =>
       argument !== "--check-runtime" && argument !== suiteArgument)
   ) {
-    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|h1-authoring-foundation.");
+    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|h1-authoring-foundation|publication-foundation|provider-participants|records-export.");
     process.exitCode = 1;
     return;
   }

@@ -10,6 +10,9 @@ import type {
   ProviderSourceSummary,
 } from "../../api/provider/sources/service";
 import styles from "./authoring.module.css";
+import BaselineConfirmationPanel from "./baseline-confirmation";
+import CommercialWorkbench from "./commercial-workbench";
+import ParticipantActivation from "./participant-activation";
 
 type ProjectList = Readonly<{
   ok: true;
@@ -125,6 +128,7 @@ export default function AuthoringWorkspace() {
   const [summary, setSummary] = useState("");
   const [scopeText, setScopeText] = useState("");
   const [exclusionsText, setExclusionsText] = useState("");
+  const [reviewReady, setReviewReady] = useState(false);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [provenanceOrigin, setProvenanceOrigin] = useState("agreement");
   const [originReference, setOriginReference] = useState("");
@@ -161,6 +165,7 @@ export default function AuthoringWorkspace() {
     setSummary(draft?.summary ?? "");
     setScopeText(draft?.scope.join("\n") ?? "");
     setExclusionsText(draft?.exclusions.join("\n") ?? "");
+    setReviewReady(false);
     const locators = draft?.sourceReferences.map((source) => source.locator) ?? [];
     setSelectedSourceLocators(
       admittedLocators
@@ -439,6 +444,7 @@ export default function AuthoringWorkspace() {
             scope,
             exclusions,
             sourceLocators: selectedSourceLocators,
+            reviewReady,
           }),
         },
       );
@@ -450,7 +456,11 @@ export default function AuthoringWorkspace() {
         new Set(sources.map((source) => source.locator)),
       );
       setMessage(
-        `Immutable draft revision ${body.draft.revision} was recorded. Publication remains unavailable.`,
+        `Immutable draft revision ${body.draft.revision} was recorded as ${
+          body.draft.state === "ready-for-client-review"
+            ? "ready for commercial preparation"
+            : "in progress"
+        }.`,
       );
     } catch (creationError) {
       setError(creationError instanceof Error
@@ -660,9 +670,17 @@ export default function AuthoringWorkspace() {
               </p>
             </div>
             <span className={styles.draftState}>
-              Draft only · publication unavailable
+              Draft and commercial publication
             </span>
           </div>
+
+          {projectId && project && (
+            <ParticipantActivation
+              key={projectId}
+              projectId={projectId}
+              projectLabel={project.displayName}
+            />
+          )}
 
           {selectedRequest ? (
             <>
@@ -947,6 +965,16 @@ export default function AuthoringWorkspace() {
                 </div>
               </section>
 
+              {projectId && requestId && (
+                <BaselineConfirmationPanel
+                  key={`${projectId}-${requestId}-${sources.map((source) =>
+                    source.locator).join("-")}`}
+                  projectId={projectId}
+                  requestId={requestId}
+                  sources={sources}
+                />
+              )}
+
               <form className={styles.draftForm} onSubmit={createDraft}>
                 <div className={styles.fieldGroup}>
                   <label htmlFor="draft-title">Draft title</label>
@@ -1021,6 +1049,21 @@ export default function AuthoringWorkspace() {
                     } will be re-read in this exact project request before immutable references are built.`}
                 </p>
 
+                <label className={styles.attestation} htmlFor="review-ready">
+                  <input
+                    id="review-ready"
+                    type="checkbox"
+                    checked={reviewReady}
+                    onChange={(event) => setReviewReady(event.target.checked)}
+                    disabled={busy}
+                  />
+                  <span>
+                    Record this new immutable revision as ready for commercial
+                    preparation. Draft content and source references cannot be
+                    edited after saving.
+                  </span>
+                </label>
+
                 <div className={styles.buttonRow}>
                   <button
                     className="button"
@@ -1044,6 +1087,17 @@ export default function AuthoringWorkspace() {
                   </button>
                 </div>
               </form>
+
+              {latest && unitId && projectId && requestId && (
+                <CommercialWorkbench
+                  key={`${latest.unitId}-${latest.revision}`}
+                  projectId={projectId}
+                  requestId={requestId}
+                  unitId={unitId}
+                  draft={latest}
+                  unitIds={unitIds}
+                />
+              )}
 
               <section className={styles.history} aria-labelledby="history-title">
                 <div className={styles.historyHeading}>
@@ -1114,7 +1168,9 @@ export default function AuthoringWorkspace() {
             <p className={styles.loading}>
               {loading
                 ? "Reading protected authoring state…"
-                : "The workbench is ready after a project and request are selected."}
+                : project
+                  ? "Select or create a request after reviewing project participant authority."
+                  : "The workbench is ready after a project and request are selected."}
             </p>
           )}
         </section>

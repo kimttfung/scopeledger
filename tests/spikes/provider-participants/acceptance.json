@@ -1,0 +1,20 @@
+{
+  "task": "provider-project-participant-activation",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:provider-participants",
+  "result": { "tests": 9, "passed": 9, "failed": 0 },
+  "proved": [
+    "Explicit project-scoped approver authority preview and confirmation",
+    "Only inspect, decide and correct grants activate",
+    "Local channel verification remains separate",
+    "Idempotent replay with no payer authority or historical rewrite",
+    "Activated custom opaque review access"
+  ],
+  "notProved": [
+    "Invitation delivery",
+    "Approver replacement or revocation UI",
+    "Payer nomination"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

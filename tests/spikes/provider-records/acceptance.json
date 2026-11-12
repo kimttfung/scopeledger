@@ -1,0 +1,20 @@
+{
+  "task": "protected-provider-records",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:provider-records",
+  "result": { "tests": 12, "passed": 12, "failed": 0 },
+  "proved": [
+    "Opaque authorized project selection",
+    "Current-grant recheck for view and download",
+    "Private no-store JSON and HTML downloads",
+    "Accessible print view, chronological attribution and known gaps",
+    "Safe escaping and exclusion of sensitive internal fields"
+  ],
+  "notProved": [
+    "Email/send workflows",
+    "Production export storage",
+    "Complete delivery/deletion records"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

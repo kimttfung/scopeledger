@@ -308,6 +308,51 @@ test("selected locators are re-read into ordered immutable source references", a
   );
 });
 
+test("review-ready intent becomes server-owned draft state without accepting raw state", async () => {
+  let admitted: unknown = null;
+  const response = await handleDraftsPost(
+    post("http://127.0.0.1:3000/api/provider/authoring/projects/project-one/requests/request-one/drafts/unit-one", {
+      title: "Homepage implementation",
+      summary: "Exact draft ready for commercial preparation.",
+      scope: ["Implement the approved homepage."],
+      exclusions: [],
+      reviewReady: true,
+    }),
+    project.projectId,
+    requestRecord.requestId,
+    draft.unitId,
+    dependencies({
+      createDraft: async (input) => {
+        admitted = input;
+        return {
+          ...draft,
+          revision: 2,
+          state: input.reviewReady
+            ? "ready-for-client-review"
+            : "in-progress",
+        };
+      },
+    }),
+  );
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(admitted, {
+    projectId: project.projectId,
+    requestId: requestRecord.requestId,
+    unitId: draft.unitId,
+    title: "Homepage implementation",
+    summary: "Exact draft ready for commercial preparation.",
+    scope: ["Implement the approved homepage."],
+    exclusions: [],
+    sourceReferences: [],
+    reviewReady: true,
+  });
+  assert.equal(
+    ((await body(response)) as { draft: AuthoringDraft }).draft.state,
+    "ready-for-client-review",
+  );
+});
+
 test("cross-project and stale source selections fail before draft persistence", async () => {
   for (const [code, message] of [
     [
@@ -372,14 +417,14 @@ test("draft retrieval returns immutable revision history with no-store headers",
   });
 });
 
-test("authoring UI exposes labeled source intake while publication stays unavailable", async () => {
+test("authoring UI exposes source intake and an explicit review-ready handoff", async () => {
   const [page, workspace, provider] = await Promise.all([
     readFile("apps/web/app/provider/authoring/page.tsx", "utf8"),
     readFile("apps/web/app/provider/authoring/authoring-workspace.tsx", "utf8"),
     readFile("apps/web/app/provider/page.tsx", "utf8"),
   ]);
 
-  assert.match(page, /Publication is not available/);
+  assert.match(page, /Prepare, preview, then publish/);
   assert.match(page, /Authentication alone does not grant product authority/);
   assert.match(workspace, /Synthetic or explicitly permitted material only/);
   assert.match(workspace, /htmlFor="source-file"/);
@@ -391,6 +436,7 @@ test("authoring UI exposes labeled source intake while publication stays unavail
   assert.match(workspace, /Upload and admit source/);
   assert.match(workspace, /sourceLocators: selectedSourceLocators/);
   assert.match(workspace, /immutable revision history/i);
+  assert.match(workspace, /htmlFor="review-ready"/);
   assert.doesNotMatch(workspace, /Publish draft/);
   assert.match(provider, /\/provider\/authoring/);
 });

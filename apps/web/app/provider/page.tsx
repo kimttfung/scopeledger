@@ -120,6 +120,9 @@ export default async function ProviderPage() {
         <a href="/provider/authoring">Open provider authoring</a>
       </p>
       <p>
+        <Link href="/provider/records">Open project records and exports</Link>
+      </p>
+      <p>
         <a href="/provider/analysis">Open protected PDF analysis</a>
       </p>
       <p>

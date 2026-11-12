@@ -111,10 +111,10 @@ export default async function ProviderAuthoringPage() {
         aria-hidden="true"
         dangerouslySetInnerHTML={{
           __html: `<!--
-THESIS: Authoring is a split ledger where immutable revision chronology is as prominent as the editor; it refuses a dashboard of interchangeable cards.
+THESIS: Authoring is a split ledger where immutable revision chronology and exact commercial preparation remain distinct; it refuses a dashboard of interchangeable cards.
 OWN-WORLD: Cool-white studio surfaces, restrained cobalt actions, fine rules, and a flat register/worktable composition.
-STORY: The provider selects or creates a project and request, records bounded draft content, then sees the new immutable revision enter history.
-FIRST VIEWPORT: A project/request register occupies the left rail; the selected request opens a broad draft workbench and visible publication boundary on the right.
+STORY: The provider selects or creates a project and request, records bounded draft content, prepares an exact preview, then explicitly publishes only eligible terms.
+FIRST VIEWPORT: A project/request register occupies the left rail; the selected request opens a broad draft and commercial workbench with immutable history on the right.
 FORM: Candidate 3 of six grounded structures, a split ledger worktable with light-table history staging; seed 947a78b3.
 -->`,
         }}
@@ -145,14 +145,18 @@ FORM: Candidate 3 of six grounded structures, a split ledger worktable with ligh
             <h1 id="authoring-title">Provider authoring ledger</h1>
             <p>
               Create a project and request, admit permitted source material, then
-              build sequential draft revisions. Source admission and draft saving
-              remain separate actions, and earlier revisions are never rewritten.
+              explicitly activate its local client approver before building
+              sequential draft revisions. A latest review-ready revision can then
+              receive provider-reviewed commercial terms, a separate preview, and
+              an explicit publication confirmation.
             </p>
           </div>
           <div className={styles.availability}>
-            <strong>Publication is not available</strong>
-            Draft state is server-owned and remains in progress in this slice.
-            No client decision, readiness, payment, or publication is simulated.
+            <strong>Prepare, preview, then publish</strong>
+            Confirm an admitted source as project baseline first. Only the latest
+            review-ready revision with complete coverage can publish payable or
+            waived terms. Client authority uses a separate preview and confirmation;
+            publication creates no decision, payment, or readiness.
           </div>
         </section>
         <AuthoringWorkspace />

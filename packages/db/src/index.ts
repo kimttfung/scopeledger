@@ -6,6 +6,8 @@ import { migration001 } from "./migrations/001-ordered-consent.js";
 import { migration002 } from "./migrations/002-runtime-persistence.js";
 import { migration003 } from "./migrations/003-analysis-persistence.js";
 import { migration004 } from "./migrations/004-authoring-foundation.js";
+import { migration005 } from "./migrations/005-commercial-publication.js";
+import { migration006 } from "./migrations/006-provider-baseline-confirmation.js";
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type Json = ColumnType<unknown, string, string>;
@@ -35,6 +37,64 @@ export interface Database {
   source_intake_records: Scope & { source_id: string; source_version: number; source_kind: "provider-upload" | "provider-note" | "client-supplied" | "external-reference"; media_type: string; original_name: string | null; declared_byte_length: number; content_digest: string | null; provenance_origin: "agreement" | "amendment" | "correspondence" | "request" | "prior-decision" | "correction" | "other"; supplied_by: string; origin_reference: string | null; acceptance_kind: "provider-attested-import" | "in-app-record-reference" | "unverified"; acceptance_basis: string; studio_sharing: "permitted" | "denied" | "unresolved"; model_processing: "permitted" | "denied" | "unresolved"; model_input_review_status: "cleared" | "not-reviewed" | "unresolved" | "prohibited-financial-data"; model_reviewed_by: string | null; model_reviewed_at: Timestamp | null; model_review_basis: string; recorded_at: Timestamp; record_digest: string };
   provider_authoring_draft_versions: Scope & { request_id: string; unit_id: string; revision: number; state: "in-progress" | "ready-for-client-review"; title: string; summary: string; scope_items: Json; exclusion_items: Json; source_count: number; draft_digest: string; authored_by: string; created_at: Timestamp };
   provider_authoring_draft_sources: Scope & { unit_id: string; draft_revision: number; position: number; source_id: string; source_version: number };
+  provider_commercial_preparations: Scope & {
+    preparation_id: string; revision: number; request_id: string; unit_id: string;
+    draft_revision: number; draft_digest: string;
+    treatment: "included" | "waived" | "payable" | "unresolved";
+    independence_explanation: string; client_visible_rationale: string;
+    delivery_description: string; payment_explanation: string;
+    consent_requirement: "required" | "not-required" | "not-applicable";
+    payment_policy: "full-prepayment" | "not-required";
+    currency: "USD" | null; subtotal: string | null;
+    tax_treatment: "none" | "exclusive" | "inclusive" | "not-applicable" | "unresolved";
+    tax_amount: string; tax_declaration: string; gross: string | null;
+    merchant_id: string; environment: "sandbox" | "live"; client_id: string;
+    approver_id: string; nomination_epoch: number; context_revision: number;
+    expected_previous_version: number | null;
+    publication_readiness: "ready" | "blocked" | "not-applicable";
+    source_count: number; baseline_count: number; dependency_count: number;
+    delivery_dependency_count: number; prerequisite_count: number; line_count: number;
+    prepared_by: string; prepared_at: Timestamp; request_digest: string;
+    preparation_digest: string;
+  };
+  provider_commercial_preparation_sources: Scope & {
+    preparation_id: string; unit_id: string; draft_revision: number; position: number;
+    source_id: string; source_version: number; source_record_digest: string;
+    locator: string; materiality: "material" | "supporting";
+    coverage_status: "covered" | "unresolved";
+    analysis_status: "not-used" | "human-reviewed" | "model-output-reviewed" | "unresolved";
+    analysis_reference: string | null; explanation: string;
+  };
+  provider_commercial_preparation_baselines: Scope & {
+    preparation_id: string; position: number; baseline_id: string; baseline_version: number;
+  };
+  provider_commercial_preparation_dependencies: Scope & {
+    preparation_id: string; unit_id: string; position: number;
+    dependency_unit_id: string; explanation: string;
+  };
+  provider_commercial_preparation_delivery_dependencies: Scope & {
+    preparation_id: string; position: number; description: string;
+  };
+  provider_commercial_preparation_prerequisites: Scope & {
+    preparation_id: string; position: number; prerequisite_id: string;
+    prerequisite_version: number; description: string;
+    blocks: "payment" | "start" | "payment-and-start";
+  };
+  provider_commercial_preparation_lines: Scope & {
+    preparation_id: string; position: number; line_id: string; description: string;
+    quantity: number; unit_price: string; amount: string;
+  };
+  provider_publication_provenance: Scope & {
+    preparation_id: string; publication_command_id: string; unit_id: string;
+    version: number; digest: string; published_by: string; published_at: Timestamp;
+  };
+  provider_baseline_confirmations: Scope & {
+    baseline_id: string; baseline_version: number; request_id: string;
+    source_id: string; source_version: number; source_record_digest: string;
+    acceptance_kind: "provider-attested-import"; acceptance_basis: string;
+    studio_sharing: "permitted"; confirmed_by: string; confirmed_at: Timestamp;
+    confirmation_digest: string;
+  };
   client_questions: Scope & { question_id: string; request_id: string; unit_id: string; unit_version: number; asked_by: string; exact_text: string; model_processing: "permitted" | "denied"; communication_effect: Generated<"communication-only">; asked_at: Timestamp; record_digest: string };
 }
 export type ProtocolTransaction = Transaction<Database>;
@@ -142,6 +202,8 @@ export class ProtocolDatabase {
         { version: 2, source: migration002 },
         { version: 3, source: migration003 },
         { version: 4, source: migration004 },
+        { version: 5, source: migration005 },
+        { version: 6, source: migration006 },
       ] as const;
       if (applied.some((version, index) => version !== index + 1)
           || applied.length > migrations.length) {
@@ -193,7 +255,17 @@ export async function createIsolatedProofDatabase(connectionString: string): Pro
   };
 }
 
-export { migration001, migration002, migration003, migration004, sql };
+export {
+  migration001,
+  migration002,
+  migration003,
+  migration004,
+  migration005,
+  migration006,
+  sql,
+};
 export * from "./runtime-persistence.js";
 export * from "./analysis-persistence.js";
 export * from "./authoring-foundation.js";
+export * from "./commercial-publication.js";
+export * from "./provider-baseline.js";

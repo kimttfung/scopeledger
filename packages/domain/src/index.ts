@@ -1,12 +1,26 @@
 import { randomUUID } from "node:crypto";
 import {
   actorSchema, canonicalJson, commandIdentifier, digestSchema, freezePublishedUnit, identifier,
-  leaseSchema, observationSchema, parseInput, payerSchema, ProtocolError, publishedUnitSchema,
-  revision, sha256, text, z,
+  leaseSchema, moneySchema, observationSchema, parseInput, payerSchema, ProtocolError,
+  publishedUnitSchema, revision, sha256, text, z,
 } from "@scopeledger/contracts";
 import type { Actor, Lease, Payer, PaymentObservation, PublishedUnit } from "@scopeledger/contracts";
-import { sql } from "@scopeledger/db";
-import type { ProtocolDatabase, ProtocolTransaction, SqlExecutor } from "@scopeledger/db";
+import {
+  CommercialPreparationError,
+  confirmProviderBaseline,
+  ProviderBaselineError,
+  readCommercialPreparation,
+  readPublicationProvenance,
+  recordPublicationProvenance,
+  saveCommercialPreparation,
+  sql,
+} from "@scopeledger/db";
+import type {
+  CommercialPreparationRecord,
+  ProtocolDatabase,
+  ProtocolTransaction,
+  SqlExecutor,
+} from "@scopeledger/db";
 
 type Action = "publish" | "decide" | "correct" | "nominate" | "review" | "pay" | "inspect";
 type Scope = { workspaceId: string; projectId: string };
@@ -41,6 +55,121 @@ type Resolution = { acknowledged: true; concerns: { concernId: string; responseR
 const commandSchema = z.strictObject({ commandId: commandIdentifier });
 const unitVersionSchema = commandSchema.extend({ unitId: identifier, version: revision, digest: digestSchema });
 export const publishCommandSchema = commandSchema.extend({ snapshot: publishedUnitSchema, expectedPreviousVersion: revision.nullable() });
+const commercialText = text.refine(
+  (value) => value.trim().length > 0
+    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value),
+  "Commercial text must be nonblank and contain no unsupported controls",
+);
+const commercialDependencySchema = z.strictObject({
+  unitId: identifier,
+  explanation: commercialText,
+});
+const commercialPrerequisiteSchema = z.strictObject({
+  id: identifier,
+  version: revision,
+  description: commercialText,
+  blocks: z.enum(["payment", "start", "payment-and-start"]),
+});
+const commercialSourceCoverageSchema = z.strictObject({
+  sourceId: identifier,
+  version: revision,
+  locator: commercialText,
+  materiality: z.enum(["material", "supporting"]),
+  coverageStatus: z.enum(["covered", "unresolved"]),
+  analysisStatus: z.enum([
+    "not-used",
+    "human-reviewed",
+    "model-output-reviewed",
+    "unresolved",
+  ]),
+  analysisReference: commercialText.nullable(),
+  explanation: commercialText,
+}).superRefine((value, context) => {
+  if (
+    (value.analysisStatus === "model-output-reviewed"
+      && value.analysisReference === null)
+    || (
+      (value.analysisStatus === "not-used"
+        || value.analysisStatus === "unresolved")
+      && value.analysisReference !== null
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["analysisReference"],
+      message: "Analysis reference does not match the declared coverage status",
+    });
+  }
+});
+const commercialPriceSchema = z.strictObject({
+  currency: z.literal("USD"),
+  paymentPolicy: z.literal("full-prepayment"),
+  lines: z.array(z.strictObject({
+    id: identifier,
+    description: commercialText,
+    quantity: z.string().regex(/^[1-9][0-9]{0,5}$/),
+    unitPrice: moneySchema,
+    amount: moneySchema,
+  })).min(1).max(100),
+  subtotal: moneySchema,
+  gross: moneySchema,
+});
+export const commercialPreparationCommandSchema = commandSchema.extend({
+  preparationId: commandIdentifier,
+  requestId: identifier,
+  unitId: identifier,
+  draftRevision: revision,
+  treatment: z.enum(["included", "waived", "payable", "unresolved"]),
+  independenceExplanation: commercialText,
+  dependencies: z.array(commercialDependencySchema).max(100),
+  clientVisibleRationale: commercialText,
+  delivery: z.strictObject({
+    description: commercialText,
+    dependencies: z.array(commercialText).max(100),
+  }),
+  prerequisites: z.array(commercialPrerequisiteSchema).max(100),
+  consentRequirement: z.enum(["required", "not-required", "not-applicable"]),
+  paymentExplanation: commercialText,
+  tax: z.strictObject({
+    treatment: z.enum([
+      "none",
+      "exclusive",
+      "inclusive",
+      "not-applicable",
+      "unresolved",
+    ]),
+    amount: moneySchema,
+    declaration: commercialText,
+  }),
+  price: commercialPriceSchema.nullable(),
+  sourceCoverage: z.array(commercialSourceCoverageSchema).min(1).max(100),
+}).superRefine((value, context) => {
+  const unique = (
+    entries: readonly string[],
+    path: (string | number)[],
+  ) => {
+    if (new Set(entries).size !== entries.length) {
+      context.addIssue({ code: "custom", path, message: "Duplicate identity" });
+    }
+  };
+  unique(value.dependencies.map((entry) => entry.unitId), ["dependencies"]);
+  unique(value.prerequisites.map((entry) => entry.id), ["prerequisites"]);
+  unique(
+    value.sourceCoverage.map((entry) => `${entry.sourceId}:${entry.version}`),
+    ["sourceCoverage"],
+  );
+  if (value.price) {
+    unique(value.price.lines.map((entry) => entry.id), ["price", "lines"]);
+  }
+});
+export const preparedPublicationCommandSchema = commandSchema.extend({
+  preparationId: commandIdentifier,
+});
+export const providerBaselineConfirmationCommandSchema = commandSchema.extend({
+  requestId: identifier,
+  sourceId: identifier,
+  sourceVersion: revision,
+});
 const resolutionSchema = z.strictObject({
   acknowledged: z.literal(true),
   concerns: z.array(z.strictObject({ concernId: identifier, responseRevision: revision })).min(1).max(100),
@@ -67,6 +196,12 @@ export const correctionAdmissionCommandSchema = commandSchema.extend({
 });
 export const workStartCommandSchema = commandSchema.extend({ unitId: identifier });
 export type PublishCommand = z.infer<typeof publishCommandSchema>;
+export type CommercialPreparationCommand =
+  z.infer<typeof commercialPreparationCommandSchema>;
+export type PreparedPublicationCommand =
+  z.infer<typeof preparedPublicationCommandSchema>;
+export type ProviderBaselineConfirmationCommand =
+  z.infer<typeof providerBaselineConfirmationCommandSchema>;
 export type DecisionCommand = z.infer<typeof decisionCommandSchema>;
 export type CorrectionAdmissionCommand = z.infer<typeof correctionAdmissionCommandSchema>;
 export type WorkStartCommand = z.infer<typeof workStartCommandSchema>;
@@ -76,6 +211,32 @@ function first<T>(rows: readonly T[], message = "Scoped record not found"): T {
   const row = rows[0];
   if (!row) throw new ProtocolError("NOT_FOUND", message);
   return row;
+}
+
+function commercialError(error: unknown): never {
+  if (!(error instanceof CommercialPreparationError)) throw error;
+  const code = error.code === "NOT_FOUND"
+    ? "NOT_FOUND"
+    : error.code === "PREPARATION_CONFLICT"
+      ? "IDEMPOTENCY_CONFLICT"
+      : error.code === "STALE_DRAFT" || error.code === "STALE_SOURCE"
+        ? "STALE_CONTEXT"
+        : "INVALID_INPUT";
+  throw new ProtocolError(code, error.message);
+}
+
+function baselineError(error: unknown): never {
+  if (!(error instanceof ProviderBaselineError)) throw error;
+  const code = error.code === "NOT_FOUND"
+    ? "NOT_FOUND"
+    : error.code === "STALE_SOURCE"
+      ? "STALE_CONTEXT"
+      : error.code === "SOURCE_NOT_CONFIRMABLE"
+        ? "REVIEW_HOLD"
+        : error.code === "BASELINE_CONFLICT"
+          ? "IDEMPOTENCY_CONFLICT"
+          : "INVALID_INPUT";
+  throw new ProtocolError(code, error.message);
 }
 
 function uniqueIds(ids: readonly string[]): string[] {
@@ -93,7 +254,8 @@ function financialMeaning(observation: PaymentObservation): string {
 
 async function fences(transaction: ProtocolTransaction, scope: Scope, exclusiveProject = false): Promise<Project> {
   const workspace = await sql<{ merchant_id: string; environment: "sandbox" | "live" }>`
-    select merchant_id, environment from workspaces where id = ${scope.workspaceId} for share
+    select merchant_id, environment from workspaces
+    where id = ${scope.workspaceId} for share
   `.execute(transaction);
   const merchant = first(workspace.rows);
   const projects = await sql<Omit<Project, "merchant_id" | "environment">>`
@@ -209,7 +371,17 @@ export class OrderedConsentStore {
   private async command<T>(
     actorInput: unknown, action: Action, input: { commandId: string }, payload: unknown,
     work: (transaction: ProtocolTransaction, actor: Actor, project: Project) => Promise<T>,
-    options: { exclusiveProject?: boolean; payer?: Payer; exactApproverVersion?: { unitId: string; version: number } } = {},
+    options: {
+      exclusiveProject?: boolean;
+      payer?: Payer;
+      exactApproverVersion?: { unitId: string; version: number };
+      validateReplay?: (
+        transaction: ProtocolTransaction,
+        actor: Actor,
+        project: Project,
+        result: T,
+      ) => Promise<void>;
+    } = {},
   ): Promise<T> {
     const actor = parseInput(actorSchema, options.payer ? {
       workspaceId: options.payer.workspaceId, projectId: options.payer.projectId,
@@ -237,6 +409,12 @@ export class OrderedConsentStore {
         if (receipt.action !== action || receipt.payload_hash !== payloadHash) {
           throw new ProtocolError("IDEMPOTENCY_CONFLICT", "Command identity was already used with different content");
         }
+        await options.validateReplay?.(
+          transaction,
+          actor,
+          project,
+          receipt.result,
+        );
         return receipt.result;
       }
       const result = await work(transaction, actor, project);
@@ -300,62 +478,499 @@ export class OrderedConsentStore {
     });
   }
 
+  async confirmProviderBaseline(
+    actor: Actor,
+    input: unknown,
+  ): Promise<{
+    baselineId: string;
+    baselineVersion: number;
+    sourceId: string;
+    sourceVersion: number;
+    confirmedAt: string;
+  }> {
+    const command = parseInput(providerBaselineConfirmationCommandSchema, input);
+    return this.command(actor, "publish", command, command, async (
+      transaction,
+      current,
+    ) => {
+      try {
+        const saved = await confirmProviderBaseline(transaction, {
+          workspaceId: current.workspaceId,
+          projectId: current.projectId,
+          requestId: command.requestId,
+          sourceId: command.sourceId,
+          sourceVersion: command.sourceVersion,
+          confirmedBy: current.actorId,
+        });
+        return {
+          baselineId: saved.confirmation.baselineId,
+          baselineVersion: saved.confirmation.baselineVersion,
+          sourceId: saved.confirmation.sourceId,
+          sourceVersion: saved.confirmation.sourceVersion,
+          confirmedAt: saved.confirmation.confirmedAt.toISOString(),
+        };
+      } catch (error) {
+        baselineError(error);
+      }
+    });
+  }
+
+  async prepareCommercial(
+    actor: Actor,
+    input: unknown,
+  ): Promise<{
+    preparationId: string;
+    revision: number;
+    preparationDigest: string;
+    publicationReadiness: "ready" | "blocked" | "not-applicable";
+  }> {
+    const command = parseInput(commercialPreparationCommandSchema, input);
+    return this.command(actor, "publish", command, command, async (
+      transaction,
+      current,
+    ) => {
+      try {
+        const { commandId: _commandId, ...content } = command;
+        const saved = await saveCommercialPreparation(transaction, {
+          workspaceId: current.workspaceId,
+          projectId: current.projectId,
+          ...content,
+          preparedBy: current.actorId,
+        });
+        return {
+          preparationId: saved.preparation.preparationId,
+          revision: saved.preparation.revision,
+          preparationDigest: saved.preparation.preparationDigest,
+          publicationReadiness: saved.preparation.publicationReadiness,
+        };
+      } catch (error) {
+        commercialError(error);
+      }
+    });
+  }
+
   async publish(actor: Actor, input: unknown): Promise<{ unitId: string; version: number; digest: string }> {
     const command = parseInput(publishCommandSchema, input);
     const frozen = freezePublishedUnit(command.snapshot);
     return this.command(actor, "publish", command, command, async (transaction, current, project) => {
-      const snapshot = frozen.snapshot;
-      if (snapshot.workspaceId !== current.workspaceId || snapshot.projectId !== current.projectId || snapshot.clientId !== project.client_id) {
-        throw new ProtocolError("INVALID_INPUT", "Snapshot is not associated with the current project");
-      }
-      const unit = first(await lockUnits(transaction, current, [snapshot.unitId]));
-      if (unit.current_version !== command.expectedPreviousVersion || snapshot.version !== (unit.current_version ?? 0) + 1) {
-        throw new ProtocolError("STALE_UNIT_VERSION", "Publication must create the next exact version");
-      }
-      if (snapshot.contextRevision !== project.context_revision) throw new ProtocolError("STALE_CONTEXT", "Material context changed before publication");
-      if (snapshot.approver.actorId !== project.approver_id || snapshot.approver.nominationEpoch !== project.nomination_epoch) {
-        throw new ProtocolError("ACCESS_DENIED", "Publication must name the current approver condition");
-      }
-      if (snapshot.treatment === "payable"
-          && (snapshot.payment.financial.merchantId !== project.merchant_id || snapshot.payment.financial.environment !== project.environment)) {
-        throw new ProtocolError("INVALID_INPUT", "Merchant and environment must match the workspace");
-      }
-      if (unit.accepted_version !== null && (snapshot.treatment !== "payable" || snapshot.financialEffect.kind !== "unpaid-replacement")) {
-        throw new ProtocolError("COLLECTION_CONFLICT", "Accepted terms require an explicit supported unpaid-replacement financial basis");
-      }
-      for (const concern of snapshot.reconciliation) await this.response(transaction, current, snapshot.unitId, concern.concernId, concern.responseRevision);
-      await checkHolds(transaction, current, snapshot.unitId, snapshot.reconciliation.map((entry) => entry.concernId));
-      for (const reference of snapshot.baselineReferences) {
-        const found = (await sql`select 1 from baseline_versions where workspace_id = ${current.workspaceId} and project_id = ${current.projectId}
-          and id = ${reference.id} and version = ${reference.version}`.execute(transaction)).rows.length;
-        if (!found) throw new ProtocolError("INVALID_INPUT", "Baseline reference is not confirmed in this project", [reference.id]);
-      }
-      for (const reference of snapshot.sourceReferences) {
-        const found = (await sql<{ availability: string }>`select availability from source_versions
-          where workspace_id = ${current.workspaceId} and project_id = ${current.projectId}
-            and id = ${reference.id} and version = ${reference.version}`.execute(transaction)).rows[0];
-        if (!found || found.availability !== reference.availability) throw new ProtocolError("INVALID_INPUT", "Source reference is not reviewed in this project", [reference.id]);
-      }
-      for (const dependency of snapshot.dependencies) {
-        if (!(await sql`select 1 from units where workspace_id = ${current.workspaceId} and project_id = ${current.projectId} and id = ${dependency.unitId}`.execute(transaction)).rows.length) {
-          throw new ProtocolError("INVALID_INPUT", "Dependency is outside this project", [dependency.unitId]);
-        }
-      }
-      await sql`insert into unit_versions(workspace_id,project_id,unit_id,version,snapshot,canonical_bytes,digest,published_by)
-        values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${canonicalJson(snapshot)}::jsonb,${frozen.bytes},${frozen.digest},${current.actorId})`.execute(transaction);
-      for (const reference of snapshot.sourceReferences) {
-        await sql`insert into version_sources(workspace_id,project_id,unit_id,version,source_id,source_version)
-          values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${reference.id},${reference.version})`.execute(transaction);
-      }
-      for (const reference of snapshot.baselineReferences) {
-        await sql`insert into version_baselines(workspace_id,project_id,unit_id,version,baseline_id,baseline_version)
-          values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${reference.id},${reference.version})`.execute(transaction);
-      }
-      await sql`update units set current_version = ${snapshot.version}
-        where workspace_id = ${current.workspaceId} and project_id = ${current.projectId} and id = ${snapshot.unitId}`.execute(transaction);
-      await history(transaction, current, current.actorId, "published", snapshot.unitId, { version: snapshot.version, digest: frozen.digest });
-      return { unitId: snapshot.unitId, version: snapshot.version, digest: frozen.digest };
+      return this.publishFrozen(
+        transaction,
+        current,
+        project,
+        command.expectedPreviousVersion,
+        frozen,
+      );
     });
+  }
+
+  async publishPrepared(
+    actor: Actor,
+    input: unknown,
+  ): Promise<{
+    preparationId: string;
+    unitId: string;
+    version: number;
+    digest: string;
+  }> {
+    const command = parseInput(preparedPublicationCommandSchema, input);
+    return this.command(actor, "publish", command, command, async (
+      transaction,
+      current,
+      project,
+    ) => {
+      const existing = await readPublicationProvenance(transaction, {
+        workspaceId: current.workspaceId,
+        projectId: current.projectId,
+        preparationId: command.preparationId,
+      });
+      if (existing) {
+        throw new ProtocolError(
+          "IDEMPOTENCY_CONFLICT",
+          "This immutable preparation was already published by another command",
+        );
+      }
+      const preparation = await readCommercialPreparation(transaction, {
+        workspaceId: current.workspaceId,
+        projectId: current.projectId,
+        preparationId: command.preparationId,
+      });
+      if (!preparation) {
+        throw new ProtocolError("NOT_FOUND", "Commercial preparation was not found");
+      }
+      const snapshot = await this.preparedSnapshot(
+        transaction,
+        current,
+        project,
+        preparation,
+      );
+      const frozen = freezePublishedUnit(snapshot);
+      const published = await this.publishFrozen(
+        transaction,
+        current,
+        project,
+        preparation.expectedPreviousVersion,
+        frozen,
+      );
+      const publishedAt = first((await sql<{ published_at: Date }>`
+        select published_at from unit_versions
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and unit_id = ${published.unitId}
+          and version = ${published.version}
+      `.execute(transaction)).rows).published_at;
+      await recordPublicationProvenance(transaction, {
+        workspaceId: current.workspaceId,
+        projectId: current.projectId,
+        preparationId: preparation.preparationId,
+        publicationCommandId: command.commandId,
+        unitId: published.unitId,
+        version: published.version,
+        digest: published.digest,
+        publishedBy: current.actorId,
+        publishedAt,
+      });
+      return {
+        preparationId: preparation.preparationId,
+        ...published,
+      };
+    });
+  }
+
+  private async preparedSnapshot(
+    transaction: ProtocolTransaction,
+    current: Actor,
+    project: Project,
+    preparation: CommercialPreparationRecord,
+  ): Promise<PublishedUnit> {
+    const unit = first(await lockUnits(
+      transaction,
+      current,
+      [preparation.unitId],
+    ));
+    if (await readPublicationProvenance(transaction, {
+      workspaceId: current.workspaceId,
+      projectId: current.projectId,
+      preparationId: preparation.preparationId,
+    })) {
+      throw new ProtocolError(
+        "IDEMPOTENCY_CONFLICT",
+        "This immutable preparation was already published by another command",
+      );
+    }
+    if (unit.current_version !== preparation.expectedPreviousVersion) {
+      throw new ProtocolError(
+        "STALE_UNIT_VERSION",
+        "Published unit history changed after commercial preparation",
+      );
+    }
+    if (
+      preparation.treatment !== "waived"
+      && preparation.treatment !== "payable"
+    ) {
+      throw new ProtocolError(
+        "REVIEW_HOLD",
+        "Included or unresolved preparation does not create a client offer",
+        [preparation.preparationId],
+      );
+    }
+    if (preparation.publicationReadiness !== "ready") {
+      throw new ProtocolError(
+        "REVIEW_HOLD",
+        "Material source coverage or permission blocks publication",
+        [preparation.preparationId],
+      );
+    }
+    const latestPreparation = (await sql<{ revision: number }>`
+      select max(revision)::integer as revision
+      from provider_commercial_preparations
+      where workspace_id = ${current.workspaceId}
+        and project_id = ${current.projectId}
+        and unit_id = ${preparation.unitId}
+    `.execute(transaction)).rows[0]?.revision;
+    if (latestPreparation !== preparation.revision) {
+      throw new ProtocolError(
+        "STALE_CONTEXT",
+        "A newer commercial preparation supersedes this basis",
+      );
+    }
+    const draft = first((await sql<{
+      state: "in-progress" | "ready-for-client-review";
+      title: string;
+      scope_items: string[];
+      exclusion_items: string[];
+      draft_digest: string;
+      latest_revision: number;
+    }>`select d.state,d.title,d.scope_items,d.exclusion_items,d.draft_digest,
+        (
+          select max(d2.revision)::integer
+          from provider_authoring_draft_versions d2
+          where d2.workspace_id = d.workspace_id
+            and d2.project_id = d.project_id
+            and d2.unit_id = d.unit_id
+        ) as latest_revision
+      from provider_authoring_draft_versions d
+      where d.workspace_id = ${current.workspaceId}
+        and d.project_id = ${current.projectId}
+        and d.request_id = ${preparation.requestId}
+        and d.unit_id = ${preparation.unitId}
+        and d.revision = ${preparation.draftRevision}
+      for key share`.execute(transaction)).rows);
+    if (
+      draft.state !== "ready-for-client-review"
+      || draft.draft_digest !== preparation.draftDigest
+      || draft.latest_revision !== preparation.draftRevision
+    ) {
+      throw new ProtocolError(
+        "STALE_CONTEXT",
+        "Draft changed after commercial preparation",
+      );
+    }
+    if (
+      preparation.clientId !== project.client_id
+      || preparation.approverId !== project.approver_id
+      || preparation.nominationEpoch !== project.nomination_epoch
+      || preparation.contextRevision !== project.context_revision
+      || preparation.merchantId !== project.merchant_id
+      || preparation.environment !== project.environment
+    ) {
+      throw new ProtocolError(
+        "STALE_CONTEXT",
+        "Project authority, context, or merchant configuration changed after preparation",
+      );
+    }
+
+    const currentBaselines = (await sql<{ id: string; version: number }>`
+      select b.id,b.version
+      from baseline_versions b
+      join projects p
+        on p.workspace_id = b.workspace_id
+        and p.id = b.project_id
+      where b.workspace_id = ${current.workspaceId}
+        and b.project_id = ${current.projectId}
+        and (
+          p.provider_creation_digest is null
+          or exists (
+            select 1 from provider_baseline_confirmations c
+            where c.workspace_id = b.workspace_id
+              and c.project_id = b.project_id
+              and c.baseline_id = b.id
+              and c.baseline_version = b.version
+          )
+        )
+      order by b.id collate "C",b.version
+    `.execute(transaction)).rows;
+    if (
+      canonicalJson(currentBaselines)
+      !== canonicalJson(preparation.baselineReferences)
+    ) {
+      throw new ProtocolError(
+        "STALE_CONTEXT",
+        "Confirmed baseline inventory changed after preparation",
+      );
+    }
+
+    const sourceReferences: PublishedUnit["sourceReferences"] = [];
+    const blockers: string[] = [];
+    for (const coverage of preparation.sourceCoverage) {
+      const source = first((await sql<{
+        availability: "available" | "unavailable";
+        record_digest: string;
+        studio_sharing: "permitted" | "denied" | "unresolved";
+        model_processing: "permitted" | "denied" | "unresolved";
+        model_input_review_status:
+          | "cleared"
+          | "not-reviewed"
+          | "unresolved"
+          | "prohibited-financial-data";
+        acceptance_kind:
+          | "provider-attested-import"
+          | "in-app-record-reference"
+          | "unverified";
+        latest_version: number;
+      }>`select sv.availability,sir.record_digest,sir.studio_sharing,
+          sir.model_processing,sir.model_input_review_status,
+          sir.acceptance_kind,
+          (
+            select max(newer.version)::integer from source_versions newer
+            where newer.workspace_id = sv.workspace_id
+              and newer.project_id = sv.project_id
+              and newer.id = sv.id
+          ) as latest_version
+        from source_versions sv
+        join source_intake_records sir
+          on sir.workspace_id = sv.workspace_id
+          and sir.project_id = sv.project_id
+          and sir.source_id = sv.id
+          and sir.source_version = sv.version
+        where sv.workspace_id = ${current.workspaceId}
+          and sv.project_id = ${current.projectId}
+          and sv.id = ${coverage.sourceId}
+          and sv.version = ${coverage.version}
+        for key share`.execute(transaction)).rows);
+      const materialBlocked = coverage.materiality === "material" && (
+        coverage.coverageStatus !== "covered"
+        || coverage.analysisStatus === "unresolved"
+        || source.availability !== "available"
+        || source.studio_sharing !== "permitted"
+        || source.acceptance_kind === "unverified"
+        || (
+          coverage.analysisStatus === "model-output-reviewed"
+          && (
+            source.model_processing !== "permitted"
+            || source.model_input_review_status !== "cleared"
+          )
+        )
+      );
+      if (
+        source.record_digest !== coverage.sourceRecordDigest
+        || source.latest_version !== coverage.version
+        || materialBlocked
+      ) {
+        blockers.push(coverage.sourceId);
+      }
+      sourceReferences.push({
+        id: coverage.sourceId,
+        version: coverage.version,
+        locator: coverage.locator,
+        availability: source.availability,
+      });
+    }
+    if (blockers.length) {
+      throw new ProtocolError(
+        "STALE_CONTEXT",
+        "Source version, coverage, or permission changed after preparation",
+        blockers,
+      );
+    }
+
+    const common = {
+      schemaVersion: "scopeledger.published-unit.v1" as const,
+      serializationVersion: "scopeledger.canonical-json.v1" as const,
+      workspaceId: current.workspaceId,
+      projectId: current.projectId,
+      clientId: project.client_id,
+      unitId: preparation.unitId,
+      version: (preparation.expectedPreviousVersion ?? 0) + 1,
+      contextRevision: project.context_revision,
+      title: draft.title,
+      scope: draft.scope_items,
+      exclusions: draft.exclusion_items,
+      dependencies: preparation.dependencies,
+      baselineReferences: preparation.baselineReferences,
+      sourceReferences,
+      rationale: `${preparation.clientVisibleRationale}\n\nIndependent-unit basis: ${preparation.independenceExplanation}\n\nPayment terms: ${preparation.paymentExplanation}`,
+      approver: {
+        actorId: project.approver_id,
+        nominationEpoch: project.nomination_epoch,
+        condition: preparation.consentRequirement === "required"
+          ? "Current named project approver; exact-version authority attestation is required"
+          : "Current named project approver; exact-version consent is not required for this waiver",
+      },
+      timing: {
+        description: preparation.delivery.description,
+        deliveryDependencies: preparation.delivery.dependencies,
+      },
+      prerequisites: preparation.prerequisites.map((entry) => ({
+        ...entry,
+        recorderId: preparation.preparedBy,
+      })),
+      reconciliation: [],
+    };
+    if (preparation.treatment === "waived") {
+      return parseInput(publishedUnitSchema, {
+        ...common,
+        treatment: "additional-waived",
+        payment: {
+          policy: "not-required",
+          explanation: preparation.paymentExplanation,
+        },
+        financialEffect: { kind: "no-obligation" },
+      });
+    }
+    const price = preparation.price;
+    if (!price) {
+      throw new ProtocolError(
+        "INVALID_INPUT",
+        "Payable preparation lost its exact financial terms",
+      );
+    }
+    return parseInput(publishedUnitSchema, {
+      ...common,
+      treatment: "payable",
+      payment: {
+        policy: "full-prepayment",
+        financial: {
+          currency: "USD",
+          merchantId: project.merchant_id,
+          environment: project.environment,
+          lines: price.lines,
+          subtotal: price.subtotal,
+          tax: preparation.tax,
+          gross: price.gross,
+        },
+      },
+      financialEffect: { kind: "new" },
+    });
+  }
+
+  private async publishFrozen(
+    transaction: ProtocolTransaction,
+    current: Actor,
+    project: Project,
+    expectedPreviousVersion: number | null,
+    frozen: ReturnType<typeof freezePublishedUnit>,
+  ): Promise<{ unitId: string; version: number; digest: string }> {
+    const snapshot = frozen.snapshot;
+    if (snapshot.workspaceId !== current.workspaceId || snapshot.projectId !== current.projectId || snapshot.clientId !== project.client_id) {
+      throw new ProtocolError("INVALID_INPUT", "Snapshot is not associated with the current project");
+    }
+    const unit = first(await lockUnits(transaction, current, [snapshot.unitId]));
+    if (unit.current_version !== expectedPreviousVersion || snapshot.version !== (unit.current_version ?? 0) + 1) {
+      throw new ProtocolError("STALE_UNIT_VERSION", "Publication must create the next exact version");
+    }
+    if (snapshot.contextRevision !== project.context_revision) throw new ProtocolError("STALE_CONTEXT", "Material context changed before publication");
+    if (snapshot.approver.actorId !== project.approver_id || snapshot.approver.nominationEpoch !== project.nomination_epoch) {
+      throw new ProtocolError("ACCESS_DENIED", "Publication must name the current approver condition");
+    }
+    if (snapshot.treatment === "payable"
+        && (snapshot.payment.financial.merchantId !== project.merchant_id || snapshot.payment.financial.environment !== project.environment)) {
+      throw new ProtocolError("INVALID_INPUT", "Merchant and environment must match the workspace");
+    }
+    if (unit.accepted_version !== null && (snapshot.treatment !== "payable" || snapshot.financialEffect.kind !== "unpaid-replacement")) {
+      throw new ProtocolError("COLLECTION_CONFLICT", "Accepted terms require an explicit supported unpaid-replacement financial basis");
+    }
+    for (const concern of snapshot.reconciliation) await this.response(transaction, current, snapshot.unitId, concern.concernId, concern.responseRevision);
+    await checkHolds(transaction, current, snapshot.unitId, snapshot.reconciliation.map((entry) => entry.concernId));
+    for (const reference of snapshot.baselineReferences) {
+      const found = (await sql`select 1 from baseline_versions where workspace_id = ${current.workspaceId} and project_id = ${current.projectId}
+        and id = ${reference.id} and version = ${reference.version}`.execute(transaction)).rows.length;
+      if (!found) throw new ProtocolError("INVALID_INPUT", "Baseline reference is not confirmed in this project", [reference.id]);
+    }
+    for (const reference of snapshot.sourceReferences) {
+      const found = (await sql<{ availability: string }>`select availability from source_versions
+        where workspace_id = ${current.workspaceId} and project_id = ${current.projectId}
+          and id = ${reference.id} and version = ${reference.version}`.execute(transaction)).rows[0];
+      if (!found || found.availability !== reference.availability) throw new ProtocolError("INVALID_INPUT", "Source reference is not reviewed in this project", [reference.id]);
+    }
+    for (const dependency of snapshot.dependencies) {
+      if (!(await sql`select 1 from units where workspace_id = ${current.workspaceId} and project_id = ${current.projectId} and id = ${dependency.unitId}`.execute(transaction)).rows.length) {
+        throw new ProtocolError("INVALID_INPUT", "Dependency is outside this project", [dependency.unitId]);
+      }
+    }
+    await sql`insert into unit_versions(workspace_id,project_id,unit_id,version,snapshot,canonical_bytes,digest,published_by)
+      values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${canonicalJson(snapshot)}::jsonb,${frozen.bytes},${frozen.digest},${current.actorId})`.execute(transaction);
+    for (const reference of snapshot.sourceReferences) {
+      await sql`insert into version_sources(workspace_id,project_id,unit_id,version,source_id,source_version)
+        values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${reference.id},${reference.version})`.execute(transaction);
+    }
+    for (const reference of snapshot.baselineReferences) {
+      await sql`insert into version_baselines(workspace_id,project_id,unit_id,version,baseline_id,baseline_version)
+        values (${current.workspaceId},${current.projectId},${snapshot.unitId},${snapshot.version},${reference.id},${reference.version})`.execute(transaction);
+    }
+    await sql`update units set current_version = ${snapshot.version}
+      where workspace_id = ${current.workspaceId} and project_id = ${current.projectId} and id = ${snapshot.unitId}`.execute(transaction);
+    await history(transaction, current, current.actorId, "published", snapshot.unitId, { version: snapshot.version, digest: frozen.digest });
+    return { unitId: snapshot.unitId, version: snapshot.version, digest: frozen.digest };
   }
 
   private async response(transaction: ProtocolTransaction, scope: Scope, unitId: string, concernId: string, responseRevision: number): Promise<void> {
@@ -565,6 +1180,149 @@ export class OrderedConsentStore {
       await history(transaction, current, current.actorId, "grant-changed", command.targetActorId, { action: command.action, active: command.active, basis: command.basis, epoch: row.epoch });
       return { grantEpoch: row.epoch };
     }, { exclusiveProject: true });
+  }
+
+  async activateApproverGrants(actor: Actor, input: unknown): Promise<{
+    approverId: string;
+    nominationEpoch: number;
+    grantEpochs: {
+      inspect: number;
+      decide: number;
+      correct: number;
+    };
+    activatedAt: string;
+  }> {
+    const command = parseInput(commandSchema.extend({
+      approverId: identifier,
+      nominationEpoch: revision,
+    }), input);
+    type Result = {
+      approverId: string;
+      nominationEpoch: number;
+      grantEpochs: {
+        inspect: number;
+        decide: number;
+        correct: number;
+      };
+      activatedAt: string;
+    };
+    const actions = ["inspect", "decide", "correct"] as const;
+    const validateCurrent = async (
+      transaction: ProtocolTransaction,
+      current: Actor,
+      project: Project,
+      result: Result,
+    ) => {
+      if (
+        project.approver_id !== command.approverId
+        || project.nomination_epoch !== command.nominationEpoch
+        || result.approverId !== command.approverId
+        || result.nominationEpoch !== command.nominationEpoch
+      ) {
+        throw new ProtocolError(
+          "STALE_CONTEXT",
+          "The current approver nomination changed before activation replay",
+        );
+      }
+      const grants = (await sql<{
+        action: string;
+        epoch: number;
+        active: boolean;
+      }>`select action,epoch,active from grants
+        where workspace_id = ${current.workspaceId}
+          and project_id = ${current.projectId}
+          and actor_id = ${command.approverId}
+        order by action collate "C"`
+        .execute(transaction)).rows;
+      if (
+        grants.length !== actions.length
+        || grants.some((grant) =>
+          !grant.active
+          || !actions.includes(grant.action as typeof actions[number])
+          || result.grantEpochs[
+            grant.action as keyof Result["grantEpochs"]
+          ] !== grant.epoch)
+      ) {
+        throw new ProtocolError(
+          "STALE_CONTEXT",
+          "The activated approver grants changed after the recorded command",
+        );
+      }
+    };
+    return this.command(
+      actor,
+      "publish",
+      command,
+      command,
+      async (transaction, current, project) => {
+        if (
+          project.approver_id !== command.approverId
+          || project.nomination_epoch !== command.nominationEpoch
+        ) {
+          throw new ProtocolError(
+            "STALE_CONTEXT",
+            "The current approver nomination changed before activation",
+          );
+        }
+        const existing = (await sql<{ action: string }>`select action
+          from grants
+          where workspace_id = ${current.workspaceId}
+            and project_id = ${current.projectId}
+            and actor_id = ${command.approverId}
+          order by action collate "C"`
+          .execute(transaction)).rows;
+        if (existing.length !== 0) {
+          throw new ProtocolError(
+            "STALE_CONTEXT",
+            "Approver authority already exists outside this activation command",
+          );
+        }
+        const grantEpochs = {
+          inspect: 0,
+          decide: 0,
+          correct: 0,
+        };
+        for (const action of actions) {
+          const grant = first((await sql<{ epoch: number }>`insert into grants(
+              workspace_id,project_id,actor_id,action,active
+            ) values (
+              ${current.workspaceId},${current.projectId},
+              ${command.approverId},${action},true
+            )
+            returning epoch`
+            .execute(transaction)).rows);
+          grantEpochs[action] = grant.epoch;
+        }
+        const activatedAt = first((await sql<{ activated_at: Date }>`
+          select clock_timestamp() as activated_at`
+          .execute(transaction)).rows).activated_at.toISOString();
+        await history(
+          transaction,
+          current,
+          current.actorId,
+          "local-client-approver-activated",
+          command.approverId,
+          {
+            nominationEpoch: command.nominationEpoch,
+            grantEpochs,
+            prospectiveOnly: true,
+            payerAuthority: false,
+          },
+        );
+        return {
+          approverId: command.approverId,
+          nominationEpoch: command.nominationEpoch,
+          grantEpochs,
+          activatedAt,
+        };
+      },
+      {
+        exclusiveProject: true,
+        validateReplay: async (transaction, current, project, result) => {
+          await validateCurrent(transaction, current, project, result);
+        },
+      },
+    );
   }
 
   async replaceApprover(actor: Actor, input: unknown): Promise<{ nominationEpoch: number }> {

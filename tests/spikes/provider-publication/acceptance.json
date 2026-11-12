@@ -1,0 +1,21 @@
+{
+  "task": "protected-provider-publication",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:provider-publication",
+  "result": { "tests": 13, "passed": 13, "failed": 0 },
+  "proved": [
+    "Explicit baseline preview and confirmation",
+    "Accessible provider commercial preparation preview",
+    "Server-owned merchant, actor, version, digest and time",
+    "Explicit exact publication confirmation",
+    "Safe opaque dynamic-review URL",
+    "A real USD 200 custom payable unit published without decision or payment"
+  ],
+  "notProved": [
+    "Custom-unit Checkout and capture",
+    "Correction-driven reissue",
+    "Public deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

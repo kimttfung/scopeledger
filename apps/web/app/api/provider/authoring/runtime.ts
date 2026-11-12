@@ -250,6 +250,7 @@ export function authoringDependencies(): AuthoringDependencies {
       scope,
       exclusions,
       sourceReferences,
+      reviewReady,
     }) => {
       const current = database();
       const unitId = suppliedUnitId ?? `unit-${randomUUID()}`;
@@ -273,7 +274,7 @@ export function authoringDependencies(): AuthoringDependencies {
         unitId,
         revision: (latest ?? 0) + 1,
         expectedPreviousRevision: latest,
-        state: "in-progress",
+        state: reviewReady ? "ready-for-client-review" : "in-progress",
         title,
         summary,
         scope,

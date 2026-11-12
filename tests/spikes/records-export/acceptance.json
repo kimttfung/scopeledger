@@ -1,0 +1,24 @@
+{
+  "task": "records-export",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:records-export",
+  "result": { "tests": 11, "passed": 11, "failed": 0 },
+  "schemaVersion": "scopeledger.project-record.v1",
+  "claims": [
+    "permission-neutral scoped reader",
+    "deterministic canonical JSON",
+    "accessible standalone printable HTML",
+    "chronological role attribution",
+    "role-safe field exclusion",
+    "honest unavailable and redacted gaps",
+    "separate commercial and delivery facts",
+    "explicit bounds and schema validation"
+  ],
+  "notProved": [
+    "Notification delivery or queued sending",
+    "Production download storage",
+    "Legal sufficiency or dispute submission"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

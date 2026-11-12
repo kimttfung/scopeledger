@@ -1,0 +1,21 @@
+{
+  "task": "dynamic-client-review-and-mutations",
+  "profile": "local-synthetic-postgresql-mailpit",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:dynamic-client-review",
+  "result": { "tests": 23, "passed": 23, "failed": 0 },
+  "proved": [
+    "Opaque project/request/unit locators and current project grants",
+    "No-store scoped generic published-term projection",
+    "Preview-first approve/decline, question and correction mutations",
+    "Stale/cross-project/terminal/replay conflict rejection",
+    "Sensitive-data exclusion",
+    "A real custom USD 200 unit reached approved and awaiting-payment"
+  ],
+  "notProved": [
+    "Generic payment actions",
+    "Cross-browser saved message drafts",
+    "Public invitation delivery"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

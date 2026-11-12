@@ -83,6 +83,7 @@ export type AuthoringDependencies = Readonly<{
       scope: readonly string[];
       exclusions: readonly string[];
       sourceReferences: readonly DraftSourceReference[];
+      reviewReady?: true;
     }>,
   ) => Promise<AuthoringDraft>;
 }>;
@@ -424,13 +425,18 @@ function draftContent(input: unknown): Readonly<{
   scope: readonly string[];
   exclusions: readonly string[];
   sourceLocators: readonly string[];
+  reviewReady: boolean;
 }> | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return null;
   }
   const record = input as Record<string, unknown>;
   const requiredKeys = ["title", "summary", "scope", "exclusions"];
-  const allowedKeys = new Set([...requiredKeys, "sourceLocators"]);
+  const allowedKeys = new Set([
+    ...requiredKeys,
+    "sourceLocators",
+    "reviewReady",
+  ]);
   if (
     requiredKeys.some((key) => !(key in record))
     || Object.keys(record).some((key) => !allowedKeys.has(key))
@@ -460,6 +466,7 @@ function draftContent(input: unknown): Readonly<{
     allowLines: true,
   }));
   const sourceLocators = record.sourceLocators ?? [];
+  const reviewReady = record.reviewReady ?? false;
   if (
     scope.some((item) => item === null)
     || exclusions.some((item) => item === null)
@@ -469,6 +476,7 @@ function draftContent(input: unknown): Readonly<{
       typeof locator !== "string"
       || boundedText(locator, 160) !== locator)
     || new Set(sourceLocators).size !== sourceLocators.length
+    || typeof reviewReady !== "boolean"
   ) {
     return null;
   }
@@ -478,6 +486,7 @@ function draftContent(input: unknown): Readonly<{
     scope: scope as string[],
     exclusions: exclusions as string[],
     sourceLocators: sourceLocators as string[],
+    reviewReady,
   };
 }
 
@@ -522,6 +531,7 @@ export async function handleDraftsPost(
         scope: content.scope,
         exclusions: content.exclusions,
         sourceReferences,
+        ...(content.reviewReady ? { reviewReady: true as const } : {}),
       }),
     }, 201);
   } catch (error) {

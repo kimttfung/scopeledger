@@ -1,0 +1,20 @@
+{
+  "task": "commercial-publication-foundation",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:publication-foundation",
+  "result": { "tests": 10, "passed": 10, "failed": 0 },
+  "proved": [
+    "Immutable provider commercial preparations and publication provenance",
+    "Explicit source-backed confirmed baseline requirement",
+    "Payable and waived publication semantics with exact USD/tax bounds",
+    "Coverage, permission, stale draft/source and replay/conflict enforcement",
+    "Publication creates no decision, obligation dispatch, payment or readiness"
+  ],
+  "notProved": [
+    "Generic custom-unit payment",
+    "Provider correction reconciliation and reissue",
+    "Production deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

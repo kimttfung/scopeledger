@@ -201,12 +201,12 @@ function rejectsCode(
     error instanceof AuthoringPersistenceError && error.code === code);
 }
 
-test("migration 004 installs fresh and upgrades contiguous 001, 002, or 003 histories", async (t) => {
+test("reviewed migrations install fresh and upgrade contiguous earlier histories", async (t) => {
   const isolated = await createIsolatedProofDatabase(requiredDatabaseUrl());
   t.after(isolated.dispose);
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4]);
+  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6]);
   const relations = (await sql<{ name: string }>`
     select c.relname as name
     from pg_catalog.pg_class c
@@ -255,7 +255,7 @@ test("migration 004 installs fresh and upgrades contiguous 001, 002, or 003 hist
     await database.migrate();
     assert.deepEqual((await sql<{ version: number }>`
       select version from schema_migrations order by version
-    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4]);
+    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6]);
     const preserved = (await sql<{
       name: string | null;
       title: string | null;
