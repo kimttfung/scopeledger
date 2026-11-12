@@ -5,6 +5,7 @@ import {
   localAccessRuntime,
   requireSameOrigin,
 } from "../../../../lib/local-access";
+import { findCapturedEmailId } from "../../../../lib/mailpit-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
       role: body.role,
     });
     try {
-      await runtime.email.send({
+      const delivery = await runtime.email.send({
         kind: "verification-code",
         messageId: randomUUID(),
         recipient,
@@ -51,18 +52,26 @@ export async function POST(request: Request): Promise<Response> {
           : "client-access",
         expiresAt: challenge.expiresAt,
       });
+      const capturedId = await findCapturedEmailId(
+        runtime.inboxUrl,
+        delivery.messageId,
+      );
+      if (!capturedId) {
+        throw new Error("Mailpit did not expose the captured message");
+      }
+      return Response.json({
+        challengeId: challenge.challengeId,
+        expiresAt: challenge.expiresAt,
+        inboxUrl: runtime.inboxUrl,
+        previewUrl: `/email-preview/${capturedId}`,
+      }, {
+        status: 201,
+        headers: { "Cache-Control": "no-store" },
+      });
     } catch (error) {
       await runtime.store.revoke(challenge.challengeId);
       throw error;
     }
-    return Response.json({
-      challengeId: challenge.challengeId,
-      expiresAt: challenge.expiresAt,
-      inboxUrl: runtime.inboxUrl,
-    }, {
-      status: 201,
-      headers: { "Cache-Control": "no-store" },
-    });
   } catch (error) {
     return Response.json(
       { code: "LOCAL_ACCESS_REQUEST_FAILED" },

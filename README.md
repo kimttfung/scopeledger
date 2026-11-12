@@ -225,6 +225,8 @@ This proves local email composition and SMTP handoff, not internet delivery, sen
 
 One real local SMTP delivery has been captured in Mailpit using a six-digit client verification message. The sanitized [partial acceptance manifest](tests/spikes/email/acceptance.json) records no code or recipient identity beyond the reserved `scopeledger.test` fixture.
 
+Mailpit's rendered HTML tab uses a `srcdoc` iframe that can appear blank in the Copilot Browser surface even though the MIME HTML is present. Newly sent access codes therefore include a **Preview rendered email** link to ScopeLedger's `/email-preview/[id]` route. That route validates the local sender/recipient/message boundary, sanitizes a small HTML allowlist and disables links; Mailpit remains the source/headers/text/raw inspector.
+
 The `/access-demo` journey now issues short-lived client-approver or payer codes, verifies them through same-origin APIs, and stores a 30-minute HttpOnly signed role session without the recipient address. The real local client flow survived reload; its [partial acceptance manifest](tests/spikes/access/acceptance.json) still distinguishes channel control from authority, consent and payment permission.
 
 An authenticated sandbox login has completed through Universal Login, OTP and the protected provider route. The SDK session hook persisted only the approved assurance claims, and the page continued to separate authenticated identity from server-side product grants. The sanitized [partial acceptance manifest](tests/spikes/auth0/acceptance.json) omits all identity values, tokens and credentials.

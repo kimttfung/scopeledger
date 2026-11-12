@@ -12,14 +12,17 @@
     "smtpAccepted": true,
     "mailpitCaptured": true,
     "rejectedRecipients": 0,
-    "verificationCodePrintedByRunner": false
+    "verificationCodePrintedByRunner": false,
+    "nativeSanitizedHtmlPreviewRendered": true
   },
   "evidence": [
     "The owned container exposed SMTP and UI only on loopback",
     "ScopeLedger delivered a six-digit client verification message through SMTP",
     "Mailpit listed the stable message identity, sender, local recipient and subject",
     "The message explicitly stated that the code does not approve terms or authorize payment",
-    "The adapter rejected external recipients and non-loopback invitation links before SMTP"
+    "The adapter rejected external recipients and non-loopback invitation links before SMTP",
+    "ScopeLedger rendered the captured HTML through a sanitizer after validating the local sender, recipient and message identity",
+    "Active tags and link attributes were stripped from preview HTML"
   ],
   "notProved": [
     "Internet delivery or sender-domain verification",

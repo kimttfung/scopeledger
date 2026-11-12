@@ -30,6 +30,7 @@ test("verifies a local client channel without implying authority", async ({
         challengeId: "11111111-1111-4111-8111-111111111111",
         expiresAt: "2026-11-11T12:10:00Z",
         inboxUrl: "http://127.0.0.1:8025",
+        previewUrl: "/email-preview/message-id",
       }),
     });
   });
@@ -52,6 +53,9 @@ test("verifies a local client channel without implying authority", async ({
   await expect(page.getByRole("status")).toContainText(
     "Verification code sent",
   );
+  await expect(page.getByRole("link", {
+    name: "Preview rendered email",
+  })).toHaveAttribute("href", "/email-preview/message-id");
   await page.getByRole("textbox", { name: "Six-digit code" }).fill("123456");
   await page.getByRole("button", { name: "Verify code" }).click();
   await expect(page.getByText("Local channel verified: client-approver")).toBeVisible();

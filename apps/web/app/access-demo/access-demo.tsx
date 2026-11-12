@@ -7,6 +7,7 @@ type RequestState = {
   challengeId: string;
   expiresAt: string;
   inboxUrl: string;
+  previewUrl: string;
   role: Role;
 };
 
@@ -136,11 +137,19 @@ export default function AccessDemo() {
           <div className="access-demo-actions">
             <a
               className="button"
+              href={request.previewUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Preview rendered email
+            </a>
+            <a
+              className="text-button"
               href={request.inboxUrl}
               target="_blank"
               rel="noreferrer"
             >
-              Open Mailpit inbox
+              Open Mailpit source and headers
             </a>
             <button
               className="button"
