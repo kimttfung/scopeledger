@@ -4,6 +4,22 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("keeps provider access disabled until Auth0 is configured", async ({
+  page,
+}) => {
+  await page.goto("/provider");
+  await expect(
+    page.getByRole("heading", {
+      name: "Provider access is not configured",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "Authentication unavailable in this profile",
+  );
+  await expect(page.getByText("synthetic client-review prototype")).toBeVisible();
+});
+
 test("keeps PayPal return and cancellation honest until server verification", async ({
   page,
 }) => {

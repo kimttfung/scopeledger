@@ -2,7 +2,7 @@
 version: 1
 slug: "apps-web-app-page-tsx"
 primary_target: "apps/web/app/page.tsx"
-related_targets: ["apps/web/app/review-request.tsx","apps/web/app/globals.css","apps/web/app/payments/paypal/payment-return-shell.tsx","apps/web/app/payments/paypal/return/page.tsx","apps/web/app/payments/paypal/cancel/page.tsx"]
+related_targets: ["apps/web/app/review-request.tsx","apps/web/app/globals.css","apps/web/app/payments/paypal/payment-return-shell.tsx","apps/web/app/payments/paypal/return/page.tsx","apps/web/app/payments/paypal/cancel/page.tsx","apps/web/app/provider/page.tsx"]
 ---
 
 Client review / mode: Operate
@@ -29,6 +29,7 @@ Implementation inventory:
 - Question/correction: contextual inline form, optional unavailable-source path and optional model permission, in-tab draft only; no simulated durable saving/submission.
 - Footer: explicit prototype scope and functional print control.
 - PayPal return/cancel: flat Studio Standards continuation pages that treat browser navigation as non-authoritative; return shows verification pending, cancellation infers no financial result, and both route back to the review without claiming payment success.
+- Provider access: the same flat continuation grammar shows Auth0 unavailable, insufficient assurance or verified provider session without turning authentication into commercial authorization.
 - Future fair-outcome record: reuse current status/list patterns; do not add conversion metrics, celebration, or a combined complete/paid badge.
 - Material: flat cool-white, dark sans, thin cool-gray rules, restrained cobalt. No imagery, textures, media, or raster UI text required.
 - Responsive: 760px/480px structural breakpoints; current information and evidence retain meaningful DOM order at 320px and 400% zoom.

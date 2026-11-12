@@ -183,4 +183,22 @@ Package and spike documentation records the public implementation boundaries and
 - No credentials, external service configuration, database, or environment file is required.
 - Browser previews and automated checks do not establish WCAG conformance or production readiness.
 
+## Provider/staff identity
+
+Auth0 is the selected provider/staff identity boundary. It supplies OIDC login, encrypted application sessions, logout/recovery integration and MFA assurance. Client approvers and payers are not required to hold Auth0 accounts; their separate scoped verification remains future IP-03 work.
+
+Without Auth0 configuration, `/provider` fails closed with an unavailable state while the synthetic client-review page remains usable. Once configured, provider access requires both verified email and an MFA method/ACR claim; authentication alone does not grant product permissions.
+
+```sh
+# Fill the Auth0 values in .env.local.
+npm run check:auth0-config
+npm run test:auth0:local
+```
+
+For local development, configure Auth0 with:
+
+- Allowed Callback URL: `http://127.0.0.1:3000/auth/callback`
+- Allowed Logout URL: `http://127.0.0.1:3000`
+- Allowed Web Origin: `http://127.0.0.1:3000`
+
 Private planning records remain the authority for unreleased product policy. This public UI and its local proofs do not establish production readiness or launch permission.

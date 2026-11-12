@@ -27,6 +27,7 @@
     "check:paypal-auth": "npm run build:paypal && node --env-file=.env.local scripts/check-paypal-auth.mjs",
     "check:gemini-config": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-config.mjs",
     "check:gemini-auth": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-auth.mjs",
+    "check:auth0-config": "node --env-file=.env.local scripts/check-auth0-config.mjs",
     "gemini:synthetic": "npm run build:gemini && node --env-file=.env.local scripts/run-gemini-synthetic.mjs",
     "gemini:scorecard": "npm run build:gemini && node --env-file=.env.local scripts/run-gemini-scorecard.mjs",
     "paypal:sandbox:create": "npm run build:paypal && node --env-file=.env.local scripts/paypal-sandbox-order.mjs create",
@@ -39,6 +40,7 @@
     "test:analysis": "npm run build:analysis && tsx --test tests/spikes/analysis/*.test.ts",
     "test:paypal:local": "npm run build:paypal && tsx --test tests/spikes/paypal/*.test.ts",
     "test:gemini:local": "npm run build:gemini && tsx --test tests/spikes/gemini/*.test.ts",
+    "test:auth0:local": "tsx --test tests/spikes/auth0/*.test.ts",
     "test:payment-worker": "npm run build:payment-worker && tsx --test tests/spikes/payment-worker/*.test.ts"
   },
   "devDependencies": {
