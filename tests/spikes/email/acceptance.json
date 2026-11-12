@@ -1,0 +1,32 @@
+{
+  "task": "IP-03-partial-email",
+  "profile": "local-mailpit-smtp-capture",
+  "observedDate": "2026-11-12",
+  "runtime": {
+    "image": "axllent/mailpit:v1.27.4@sha256:df6c2541907e1be6fac21f509927cf6ed771617a1f4b361ef66d97bd05593d2d",
+    "smtp": "127.0.0.1:1025",
+    "inbox": "http://127.0.0.1:8025",
+    "hostMounts": false
+  },
+  "result": {
+    "smtpAccepted": true,
+    "mailpitCaptured": true,
+    "rejectedRecipients": 0,
+    "verificationCodePrintedByRunner": false
+  },
+  "evidence": [
+    "The owned container exposed SMTP and UI only on loopback",
+    "ScopeLedger delivered a six-digit client verification message through SMTP",
+    "Mailpit listed the stable message identity, sender, local recipient and subject",
+    "The message explicitly stated that the code does not approve terms or authorize payment",
+    "The adapter rejected external recipients and non-loopback invitation links before SMTP"
+  ],
+  "notProved": [
+    "Internet delivery or sender-domain verification",
+    "External bounce, complaint or suppression handling",
+    "Real recipient ownership or legal authority",
+    "Public evaluator email access",
+    "Production retention, provider terms or availability"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

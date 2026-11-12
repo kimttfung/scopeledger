@@ -204,6 +204,22 @@ For local development, configure Auth0 with:
 - Allowed Logout URL: `http://127.0.0.1:3000`
 - Allowed Web Origin: `http://127.0.0.1:3000`
 
+## Local client/payer email capture
+
+The demo uses a pinned Mailpit container instead of an external email provider. SMTP and the inbox UI bind only to loopback, and messages never leave the computer.
+
+```sh
+npm run mailpit:start
+npm run mailpit:status
+npm run email:demo
+```
+
+Open <http://127.0.0.1:8025> to inspect captured invitation and verification messages. Stop only the owned local service with `npm run mailpit:stop`.
+
+This proves local email composition and SMTP handoff, not internet delivery, sender reputation, bounce webhooks or public evaluator access.
+
+One real local SMTP delivery has been captured in Mailpit using a six-digit client verification message. The sanitized [partial acceptance manifest](tests/spikes/email/acceptance.json) records no code or recipient identity beyond the reserved `scopeledger.test` fixture.
+
 An authenticated sandbox login has completed through Universal Login, OTP and the protected provider route. The SDK session hook persisted only the approved assurance claims, and the page continued to separate authenticated identity from server-side product grants. The sanitized [partial acceptance manifest](tests/spikes/auth0/acceptance.json) omits all identity values, tokens and credentials.
 
 Private planning records remain the authority for unreleased product policy. This public UI and its local proofs do not establish production readiness or launch permission.
