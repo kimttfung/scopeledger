@@ -1,0 +1,66 @@
+{
+  "task": "IP-04-partial",
+  "profile": "authenticated-gemini-synthetic-structured-output",
+  "observedDate": "2026-11-12",
+  "provider": "google-gemini",
+  "model": "gemini-3.5-flash-lite",
+  "result": {
+    "caseCount": 4,
+    "locallyAccepted": 4,
+    "mechanicallyPassed": 4,
+    "humanSemanticScoringCompleted": false,
+    "publicationEligibility": "blocked",
+    "usage": {
+      "promptTokens": 1483,
+      "candidateTokens": 929,
+      "totalTokens": 2412
+    }
+  },
+  "cases": [
+    {
+      "id": "included-work",
+      "expectedEvidence": "charge-weakening",
+      "supportingPointers": 0,
+      "chargeWeakeningPointers": 1,
+      "uncertaintyPreserved": true
+    },
+    {
+      "id": "genuine-addition",
+      "expectedEvidence": "supporting",
+      "supportingPointers": 1,
+      "chargeWeakeningPointers": 1,
+      "uncertaintyPreserved": true
+    },
+    {
+      "id": "missing-context-correction",
+      "expectedEvidence": "balanced",
+      "supportingPointers": 1,
+      "chargeWeakeningPointers": 2,
+      "uncertaintyPreserved": true
+    },
+    {
+      "id": "unresolved-ambiguity",
+      "expectedEvidence": "uncertain",
+      "supportingPointers": 0,
+      "chargeWeakeningPointers": 1,
+      "uncertaintyPreserved": true
+    }
+  ],
+  "evidence": [
+    "Authenticated model lookup succeeded without exposing the auth key",
+    "All four synthetic classes returned strict structured output",
+    "The model selected host-provided exact span IDs rather than calculating Unicode offsets",
+    "ScopeLedger reconstructed and validated every exact quote and source reference locally",
+    "Every result remained human-review-required and publication-blocked",
+    "Only 429 and 503 responses receive bounded retries"
+  ],
+  "notProved": [
+    "Human semantic correctness scoring",
+    "Repeated-run variance and stability",
+    "Actual PDF inspection and parser isolation",
+    "Real customer-document processing permission",
+    "Approved retention and data-processing terms",
+    "Production latency, quota, cost or reliability"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

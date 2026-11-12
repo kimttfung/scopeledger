@@ -27,6 +27,8 @@
     "check:paypal-auth": "npm run build:paypal && node --env-file=.env.local scripts/check-paypal-auth.mjs",
     "check:gemini-config": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-config.mjs",
     "check:gemini-auth": "npm run build:gemini && node --env-file=.env.local scripts/check-gemini-auth.mjs",
+    "gemini:synthetic": "npm run build:gemini && node --env-file=.env.local scripts/run-gemini-synthetic.mjs",
+    "gemini:scorecard": "npm run build:gemini && node --env-file=.env.local scripts/run-gemini-scorecard.mjs",
     "paypal:sandbox:create": "npm run build:paypal && node --env-file=.env.local scripts/paypal-sandbox-order.mjs create",
     "paypal:sandbox:capture": "npm run build:paypal && node --env-file=.env.local scripts/paypal-sandbox-order.mjs capture",
     "ip02:create": "npm run build:payment-worker && node --env-file=.env.local scripts/run-ip02.mjs create",

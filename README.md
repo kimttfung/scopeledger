@@ -165,7 +165,9 @@ npm run check:gemini-auth
 npm run test:gemini:local
 ```
 
-The default documented model is `gemini-3.8-flash`; pin the exact model available to the Google AI Studio project before recording actual evidence. Never expose the auth key to the browser or commit it.
+The selected model is `gemini-3.5-flash-lite`. Never expose the auth key to the browser or commit it.
+
+An authenticated four-class synthetic scorecard now covers included work, genuine additions, missing-context correction and unresolved ambiguity. All four outputs passed strict local schema/evidence reconstruction and remained human-review-required and publication-blocked. The sanitized [partial acceptance manifest](tests/spikes/gemini/acceptance.json) is mechanical evidence only; human semantic scoring and repeat-run stability remain outstanding.
 
 **IP-04/SP-06 are not complete.** Actual file-type inspection, PDF extraction/parser isolation, authenticated Gemini calls, held-out quality measurements and approved data-processing terms remain unproved. No fabricated provider results are included. IP-03 likewise requires selected, authorized identity/email configurations before its actual experiments can run.
 

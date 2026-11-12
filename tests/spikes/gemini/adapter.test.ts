@@ -11,9 +11,6 @@ import {
 import type { FetchLike } from "@scopeledger/gemini-adapter";
 
 const extractedText = "Reusable layout is included. Populated page is additional.";
-const points = Array.from(extractedText);
-const supportingQuote = "Populated page is additional.";
-const supportingStart = points.join("").indexOf(supportingQuote);
 const sourceReference = {
   workspaceId: "workspace",
   projectId: "project",
@@ -69,31 +66,18 @@ function run(options: {
 
 function candidate(overrides: Record<string, unknown> = {}) {
   return {
-    schemaVersion: 1,
-    workspaceId: "workspace",
-    projectId: "project",
     claims: [{
       claimId: "claim-1",
       interpretation: "The populated page is described as additional.",
-      supportingEvidence: [{
-        source: sourceReference,
-        start: supportingStart,
-        end: supportingStart + Array.from(supportingQuote).length,
-        quote: supportingQuote,
-        polarity: "supporting",
-      }],
-      chargeWeakeningEvidence: [],
+      supportingSpanIds: ["span-2"],
+      chargeWeakeningSpanIds: [],
       uncertainty: {
         status: "limited",
         explanation: "Commercial treatment still requires provider review.",
         questions: [],
       },
     }],
-    coverage: {
-      sources: [sourceReference],
-      missingContext: [],
-      counterEvidenceScope: "admitted-sources-only",
-    },
+    missingContext: [],
     ...overrides,
   };
 }
@@ -156,12 +140,19 @@ test("admitted source context produces strict human-review-required candidates",
   assert.equal(new Headers(calls[0]?.init?.headers).get("x-goog-api-key"), "test-key");
   const body = JSON.parse(String(calls[0]?.init?.body)) as {
     generationConfig: {
-      responseMimeType: string;
-      responseJsonSchema: unknown;
+      responseFormat: {
+        text: {
+          mimeType: string;
+          schema: unknown;
+        };
+      };
     };
   };
-  assert.equal(body.generationConfig.responseMimeType, "application/json");
-  assert.ok(body.generationConfig.responseJsonSchema);
+  assert.equal(
+    body.generationConfig.responseFormat.text.mimeType,
+    "APPLICATION_JSON",
+  );
+  assert.ok(body.generationConfig.responseFormat.text.schema);
 });
 
 test("denied model permission blocks dispatch before any network call", async () => {
@@ -183,9 +174,9 @@ test("denied model permission blocks dispatch before any network call", async ()
   assert.equal(calls, 0);
 });
 
-test("schema-valid but false source pointers are rejected locally", async () => {
+test("unknown model-selected spans are rejected locally", async () => {
   const invalid = candidate();
-  invalid.claims[0]!.supportingEvidence[0]!.quote = "Fabricated quote";
+  invalid.claims[0]!.supportingSpanIds[0] = "unknown-span";
   const client = new GeminiCandidateClient({
     apiKey: "test-key",
     model: "gemini-3.8-flash",
@@ -212,4 +203,25 @@ test("model authentication lookup never returns or logs the API key", async () =
     model: "gemini-3.8-flash",
   });
   assert.equal(JSON.stringify(result).includes("must-not-be-returned"), false);
+});
+
+test("only transient 429/503 responses receive bounded retries", async () => {
+  let calls = 0;
+  const client = new GeminiCandidateClient({
+    apiKey: "test-key",
+    model: "gemini-3.5-flash-lite",
+  }, {
+    fetch: async () => {
+      calls += 1;
+      if (calls < 3) {
+        return new Response(JSON.stringify({
+          error: { status: "UNAVAILABLE", message: "Synthetic high demand." },
+        }), { status: 503, headers: { "retry-after": "0" } });
+      }
+      return response(candidate());
+    },
+  });
+  const result = await client.generateCandidateClaims(run());
+  assert.equal(result.review.publicationEligibility, "blocked");
+  assert.equal(calls, 3);
 });
