@@ -1,0 +1,20 @@
+{
+  "task": "local-private-object-storage",
+  "profile": "local-synthetic-filesystem",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:object-storage",
+  "result": { "tests": 11, "passed": 11, "failed": 0 },
+  "proved": [
+    "Content-addressed immutable atomic writes",
+    "Fixed-root traversal and symlink rejection",
+    "Private permissions where supported",
+    "Exact write/read limits and bounded integrity-verified reads",
+    "Idempotent exact replay and explicit conflict/not-found/tamper errors"
+  ],
+  "notProved": [
+    "Deployed object-service behavior",
+    "Backup, restore, retention or deletion",
+    "Malware scanning or hostile-file safety"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

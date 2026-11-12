@@ -71,7 +71,7 @@ test("fresh PostgreSQL installation applies every reviewed migration in order", 
   const versions = (await sql<{ version: number }>`
     select version from schema_migrations order by version
   `.execute(isolated.database.kysely)).rows.map((row) => row.version);
-  assert.deepEqual(versions, [1, 2, 3]);
+  assert.deepEqual(versions, [1, 2, 3, 4]);
   const relations = (await sql<{ name: string }>`
     select c.relname as name
     from pg_catalog.pg_class c
@@ -105,19 +105,19 @@ test("existing migration 001 installation upgrades through reviewed migrations w
   await database.migrate();
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3]);
+  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4]);
   assert.equal((await sql`select 1 from projects
     where workspace_id = 'upgrade-workspace' and id = 'upgrade-project'`
     .execute(database.kysely)).rows.length, 1);
   await database.migrate();
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3]);
+  `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4]);
 });
 
 test("migration rejects gapped, unknown, and unversioned nonempty histories", async (t) => {
   const targets = await migrationTargets(t);
-  for (const versions of [[2], [1, 3], [1, 2, 4], [1, 2, 3, 4]]) {
+  for (const versions of [[2], [1, 3], [1, 2, 5], [1, 2, 3, 5], [1, 2, 3, 4, 5]]) {
     const database = await targets.create();
     await database.transaction(async (transaction) => {
       await sql`create table schema_migrations(

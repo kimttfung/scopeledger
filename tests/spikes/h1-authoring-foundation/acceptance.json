@@ -1,0 +1,20 @@
+{
+  "task": "h1-authoring-foundation",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:h1-authoring-foundation",
+  "result": { "tests": 5, "passed": 5, "failed": 0 },
+  "proved": [
+    "Sequential migration 004 installation and upgrades",
+    "Workspace/project/request scoped provider-created identities",
+    "Immutable bounded source-intake records",
+    "Sequential immutable authoring draft revisions and source references",
+    "Communication-only client questions with no commercial effects"
+  ],
+  "notProved": [
+    "Publication into client-reviewable agreement units",
+    "Provider treatment, price or tax authoring",
+    "Public multi-tenant deployment"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

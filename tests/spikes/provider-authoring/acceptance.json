@@ -1,0 +1,21 @@
+{
+  "task": "protected-provider-authoring",
+  "profile": "local-synthetic-auth0-postgresql",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:provider-authoring",
+  "result": { "tests": 10, "passed": 10, "failed": 0 },
+  "proved": [
+    "Protected provider-created projects and requests",
+    "Server-owned identities, actors, revisions and digests",
+    "Sequential immutable draft revision history",
+    "Request-scoped source listing, selection and server revalidation",
+    "Source-free drafts remain supported",
+    "A real synthetic project/request/source-bound draft path completed through the browser"
+  ],
+  "notProved": [
+    "Commercial treatment, price or tax authoring",
+    "Publication into a client-reviewable immutable unit",
+    "Custom-project client invitation or payment journey"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

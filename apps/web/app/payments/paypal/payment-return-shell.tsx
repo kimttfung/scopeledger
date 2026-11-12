@@ -192,9 +192,9 @@ export default function PaymentReturnShell({
             {kind === "return"
               && payment?.recovery === "manual-recovery-required" && (
               <p>
-                ScopeLedger cannot safely resolve this attempt with the currently
-                stored provider identity. Manual recovery is required; no new
-                attempt or capture was created.
+                ScopeLedger could not identify exactly one matching capture under
+                the original server-known Order. Manual recovery is required; no
+                new attempt or capture was created.
               </p>
             )}
           </div>
@@ -218,7 +218,7 @@ export default function PaymentReturnShell({
               >
                 {reconciling
                   ? "Refreshing authoritative status…"
-                  : "Refresh the original capture status"}
+                  : "Recover the original capture status"}
               </button>
             )}
             <Link className="button" href="/">

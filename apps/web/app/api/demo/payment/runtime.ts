@@ -270,6 +270,16 @@ export function demoPaymentRuntime(
       const reconciler = new PayPalCaptureReconciler(store, client);
       return reconciler.reconcileKnownCapture(scope, target);
     },
+    reconcileOrderCapture: async (target) => {
+      if (!client) {
+        throw Object.assign(
+          new Error("PayPal provider configuration is unavailable"),
+          { code: "PAYMENT_PROVIDER_CONFIG_UNAVAILABLE" },
+        );
+      }
+      const reconciler = new PayPalCaptureReconciler(store, client);
+      return reconciler.reconcileOrderCapture(scope, target);
+    },
     inspectReadiness: async () => (
       await store.inspectUnit(payerActor, unitId)
     ).readiness,

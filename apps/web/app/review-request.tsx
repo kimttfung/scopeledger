@@ -68,6 +68,22 @@ type SubmittedConcern = {
   agreementChanged: false;
   paymentChanged: false;
 };
+type SubmittedQuestion = {
+  ok: true;
+  submitted: true;
+  kind: "question";
+  duplicate: boolean;
+  questionId: string;
+  unitId: string;
+  version: number;
+  digest: string;
+  communicationEffect: "communication-only";
+  reviewHoldCreated: false;
+  agreementChanged: false;
+  paymentChanged: false;
+  readinessChanged: false;
+  workStartChanged: false;
+};
 type SubmissionFailure = {
   ok: false;
   code: string;
@@ -147,23 +163,28 @@ function paymentErrorMessage(code: string): string {
   }
 }
 
-function submissionErrorMessage(code: string): string {
+function submissionErrorMessage(code: string, kind: MessageKind): string {
+  const isQuestion = kind === "question";
   switch (code) {
     case "CLIENT_ACCESS_REQUIRED":
     case "CLIENT_APPROVER_REQUIRED":
     case "SUBMISSION_NOT_AUTHORIZED":
-      return "Verified local client-approver access is required to submit this correction.";
+      return `Verified local client-approver access is required to submit this ${kind}.`;
     case "SUBMISSION_TEXT_LIMIT":
       return limitError;
     case "INVALID_SUBMISSION_INPUT":
-      return "The correction must include valid text within the displayed Unicode code-point limits.";
+      return isQuestion
+        ? "The question must include valid text within the displayed Unicode code-point limits."
+        : "The correction must include valid text within the displayed Unicode code-point limits.";
     case "SUBMISSION_NOT_AVAILABLE":
     case "SUBMISSION_STATE_CHANGED":
-      return "The review basis changed. Refresh and review the current terms before submitting.";
-    case "QUESTION_SUBMISSION_UNSUPPORTED":
-      return "Questions cannot be recorded yet because the current domain has no durable question contract.";
+      return isQuestion
+        ? "The review basis changed, or this verified session already recorded a different question. Refresh and review the current terms before trying again."
+        : "The review basis changed. Refresh and review the current terms before submitting.";
     default:
-      return "The correction could not be recorded safely. No concern, decision, or payment change was shown as successful.";
+      return isQuestion
+        ? "The question could not be recorded safely. No communication record or commercial state change was shown as successful."
+        : "The correction could not be recorded safely. No concern, decision, or payment change was shown as successful.";
   }
 }
 
@@ -232,6 +253,7 @@ export default function ReviewRequest() {
   const [submittingMessage, setSubmittingMessage] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [submittedConcern, setSubmittedConcern] = useState<SubmittedConcern | null>(null);
+  const [submittedQuestion, setSubmittedQuestion] = useState<SubmittedQuestion | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -414,8 +436,9 @@ export default function ReviewRequest() {
     if (messageKind) setPreview(messageKind);
   }
 
-  async function submitCorrection() {
-    if (preview !== "correction") return;
+  async function submitMessage() {
+    if (preview !== "question" && preview !== "correction") return;
+    const kind = preview;
     setSubmittingMessage(true);
     setSubmissionError("");
     try {
@@ -423,28 +446,34 @@ export default function ReviewRequest() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "correction",
-          message,
-          source,
-          allowModel,
-        }),
+        body: JSON.stringify(kind === "correction"
+          ? { kind, message, source, allowModel }
+          : { kind, message, allowModel }),
       });
-      const body = await response.json() as SubmittedConcern | SubmissionFailure;
+      const body = await response.json() as
+        | SubmittedConcern
+        | SubmittedQuestion
+        | SubmissionFailure;
       if (!response.ok || !body.ok) {
-        setSubmissionError(submissionErrorMessage(body.ok ? "" : body.code));
+        setSubmissionError(submissionErrorMessage(body.ok ? "" : body.code, kind));
         return;
       }
-      const refreshed = await fetchReviewProjection().catch(() => null);
-      if (refreshed) {
-        setProjection(refreshed);
+      if (body.kind === "correction") {
+        const refreshed = await fetchReviewProjection().catch(() => null);
+        if (refreshed) {
+          setProjection(refreshed);
+        }
+        setSubmittedConcern(body);
+      } else {
+        setSubmittedQuestion(body);
       }
-      setSubmittedConcern(body);
       dialogRef.current?.close();
       setMessageKind(null);
       requestAnimationFrame(() => messageTriggerRef.current?.focus());
     } catch {
-      setSubmissionError(submissionErrorMessage("SUBMISSION_RECORDING_FAILED"));
+      setSubmissionError(
+        submissionErrorMessage("SUBMISSION_RECORDING_FAILED", kind),
+      );
     } finally {
       setSubmittingMessage(false);
     }
@@ -691,6 +720,15 @@ export default function ReviewRequest() {
                   unit is on review hold; no agreement or payment state was changed.
                 </p>
               )}
+              {submittedQuestion && (
+                <p className="action-note" role="status">
+                  Question {submittedQuestion.questionId} was recorded against{" "}
+                  {submittedQuestion.unitId}, version {submittedQuestion.version}, as
+                  communication only. No notification delivery is claimed. It created
+                  no review hold and changed no agreement, payment, readiness, or work-start
+                  state.
+                </p>
+              )}
               {terminalDecision === "approve" && projection?.acceptedVersion && (
                 <div className="decision-intro">
                   <h3>Pay the approved version 2 obligation</h3>
@@ -789,7 +827,7 @@ export default function ReviewRequest() {
                   </div>
                   <p className="form-notice">
                     {messageKind === "question"
-                      ? "Use synthetic text only. Questions can be previewed, but the current domain has no durable question contract, so no submit action is offered."
+                      ? "Use synthetic text only. Your draft stays in this tab until you explicitly submit it from the preview. A submitted question is a communication-only record; it creates no review hold or commercial state change."
                       : "Use synthetic text only. Your draft stays in this tab until you explicitly submit it from the preview; it will be lost on refresh before submission."}
                   </p>
                   <label htmlFor="client-message">{messageKind === "question" ? "Your question" : "What do you believe was already agreed?"}</label>
@@ -805,9 +843,11 @@ export default function ReviewRequest() {
                     </>
                   )}
                   <p className="sharing-note">
-                    <strong>{messageKind === "correction" ? "Recorded for review by:" : "Would be shared with:"}</strong>{" "}
+                    <strong>{messageKind === "correction" ? "Recorded for review by:" : "Recorded as project communication for:"}</strong>{" "}
                     Northstar Studio&apos;s authorized project team.
-                    {messageKind === "correction" && " This demo records the concern but sends no notification."}
+                    {messageKind === "correction"
+                      ? " This demo records the concern but sends no notification."
+                      : " Recording does not claim that a notification was delivered."}
                     {" "}Sharing with the studio and permission for model processing are separate.
                   </p>
                   <label className="optional-consent">
@@ -848,8 +888,8 @@ export default function ReviewRequest() {
                 ? "Preview only. Nothing has been recorded yet. Use the explicit record action below to submit this exact outcome."
                 : preview === "correction" && canRecord && projection
                   ? "Preview only. Nothing has been submitted yet. The explicit action below records a durable concern and review hold against the server-current unit."
-                  : preview === "question"
-                    ? "Preview only. The current domain has no durable question contract, so this question cannot be submitted."
+                    : preview === "question" && canRecord && projection
+                      ? "Preview only. Nothing has been submitted yet. The explicit action below records this question as communication only against the server-current unit and version."
                     : "Local prototype only. Nothing is approved, declined, sent, resolved, or charged."}
             </p>
             <p className="dialog-version">Unit U1 / Version 2 / Northstar Studio</p>
@@ -859,9 +899,11 @@ export default function ReviewRequest() {
             {(preview === "question" || preview === "correction") && (
               <>
                 <p>
-                  <strong>{preview === "correction" ? "Recorded for review by:" : "Would be shared with:"}</strong>{" "}
+                  <strong>{preview === "correction" ? "Recorded for review by:" : "Recorded as project communication for:"}</strong>{" "}
                   the authorized Northstar Studio project team.
-                  {preview === "correction" && " This demo does not send a notification."}
+                  {preview === "correction"
+                    ? " This demo does not send a notification."
+                    : " Recording does not claim that a notification was delivered."}
                 </p>
                 <blockquote className="message-preview">{message}</blockquote>
                 {preview === "correction" && <p className="source-preview"><strong>Source:</strong> {source.trim() ? source : "Unavailable; no attachment supplied."}</p>}
@@ -869,26 +911,28 @@ export default function ReviewRequest() {
                 <p>
                   {preview === "correction"
                     ? "Submitting this correction creates a durable concern and places the exact current unit on review hold. It does not approve terms, create or alter payment, rewrite a prior decision, or start work."
-                    : "This preview creates no record or hold. No submit action is offered because the existing domain cannot durably store a question without inventing question semantics."}
+                    : "This preview creates no record or hold. Submitting records the exact question and model-processing permission as communication only. It creates no concern or review hold and never changes agreement, payment, readiness, or work-start state."}
                 </p>
               </>
             )}
-            {preview === "correction" && canRecord && projection && (
+            {(preview === "question" || preview === "correction") && canRecord && projection && (
               <button
                 className="button"
                 disabled={submittingMessage}
-                onClick={() => void submitCorrection()}
+                onClick={() => void submitMessage()}
               >
                 {submittingMessage
-                  ? "Submitting correction…"
-                  : "Submit correction and place review hold"}
+                  ? `Submitting ${preview}…`
+                  : preview === "correction"
+                    ? "Submit correction and place review hold"
+                    : "Submit question as communication only"}
               </button>
             )}
-            {preview === "correction" && (!canRecord || !projection) && (
+            {(preview === "question" || preview === "correction") && (!canRecord || !projection) && (
               <p className="field-help">
                 {projection
-                  ? "Verified local client-approver access is required to submit this correction."
-                  : "The server-current review basis is unavailable, so this correction cannot be submitted."}
+                  ? `Verified local client-approver access is required to submit this ${preview}.`
+                  : `The server-current review basis is unavailable, so this ${preview} cannot be submitted.`}
               </p>
             )}
             {(preview === "approve" || preview === "decline") && canRecord && !decisionRecorded && (

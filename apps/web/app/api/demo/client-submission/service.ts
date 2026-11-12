@@ -1,11 +1,18 @@
 import { z } from "zod";
 
-const requestSchema = z.strictObject({
-  kind: z.enum(["question", "correction"]),
-  message: z.string(),
-  source: z.string().optional(),
-  allowModel: z.boolean(),
-});
+const requestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("question"),
+    message: z.string(),
+    allowModel: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal("correction"),
+    message: z.string(),
+    source: z.string().optional(),
+    allowModel: z.boolean(),
+  }),
+]);
 
 const protocolErrorCodes = new Set([
   "ACCESS_DENIED",
@@ -14,6 +21,7 @@ const protocolErrorCodes = new Set([
   "INVALID_INPUT",
   "NOT_FOUND",
   "PAYMENT_OUTCOME_UNKNOWN",
+  "QUESTION_CONFLICT",
   "REVIEW_HOLD",
   "STALE_CONTEXT",
   "STALE_UNIT_VERSION",
@@ -21,8 +29,12 @@ const protocolErrorCodes = new Set([
 
 const TEXT_LIMIT = 10_000;
 const invalidUnicode = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+const invalidQuestionControl = /(?![\t\n])\p{Cc}/u;
 
-type Session = Readonly<{ role: "client-approver" | "payer" }>;
+type Session = Readonly<{
+  role: "client-approver" | "payer";
+  challengeId: string;
+}>;
 
 export type CurrentSubmissionBasis = Readonly<{
   unitId: string;
@@ -58,15 +70,35 @@ export type CorrectionCommand = Readonly<{
   }>;
 }>;
 
+export type QuestionCommand = Readonly<{
+  questionId: string;
+  packetId: string;
+  unitId: string;
+  unitVersion: number;
+  exactText: string;
+  modelProcessing: "permitted" | "denied";
+}>;
+
 export type SubmissionDependencies = Readonly<{
   requireSameOrigin: (request: Request) => void;
   readSession: () => Promise<Session | null>;
   loadCurrentBasis: () => Promise<CurrentSubmissionBasis | null>;
+  askQuestion: (command: QuestionCommand) => Promise<Readonly<{
+    duplicate: boolean;
+    question: Readonly<{
+      questionId: string;
+      packetId: string;
+      unitId: string;
+      unitVersion: number;
+      communicationEffect: "communication-only";
+    }>;
+  }>>;
   admitCorrection: (command: CorrectionCommand) => Promise<Readonly<{
     concernId: string;
     impactRevision: number;
     affectedUnitIds: readonly string[];
   }>>;
+  createQuestionId: (session: Session) => string;
   createCommandId: () => string;
   createConcernId: () => string;
 }>;
@@ -86,6 +118,10 @@ function validText(value: string): boolean {
   return value.trim().length > 0
     && codePointLength(value) <= TEXT_LIMIT
     && !invalidUnicode.test(value);
+}
+
+function validQuestionText(value: string): boolean {
+  return validText(value) && !invalidQuestionControl.test(value);
 }
 
 function errorCode(error: unknown): string | null {
@@ -109,6 +145,7 @@ function protocolFailure(error: unknown): Response {
     case "INVALID_INPUT":
       return json({ ok: false, code: "INVALID_SUBMISSION_INPUT" }, 422);
     case "IDEMPOTENCY_CONFLICT":
+    case "QUESTION_CONFLICT":
     case "REVIEW_HOLD":
     case "STALE_CONTEXT":
     case "STALE_UNIT_VERSION":
@@ -153,13 +190,20 @@ export async function handleClientSubmissionPost(
   if (!parsed.success) {
     return json({ ok: false, code: "INVALID_SUBMISSION_INPUT" }, 422);
   }
-  if (!validText(parsed.data.message)) {
+  if (
+    parsed.data.kind === "question"
+      ? !validQuestionText(parsed.data.message)
+      : !validText(parsed.data.message)
+  ) {
     const code = codePointLength(parsed.data.message) > TEXT_LIMIT
       ? "SUBMISSION_TEXT_LIMIT"
       : "INVALID_SUBMISSION_INPUT";
     return json({ ok: false, code }, 422);
   }
-  if (parsed.data.source !== undefined) {
+  if (
+    parsed.data.kind === "correction"
+    && parsed.data.source !== undefined
+  ) {
     if (codePointLength(parsed.data.source) > TEXT_LIMIT) {
       return json({ ok: false, code: "SUBMISSION_TEXT_LIMIT" }, 422);
     }
@@ -171,13 +215,6 @@ export async function handleClientSubmissionPost(
     }
   }
 
-  if (parsed.data.kind === "question") {
-    return json({
-      ok: false,
-      code: "QUESTION_SUBMISSION_UNSUPPORTED",
-    }, 409);
-  }
-
   let basis: CurrentSubmissionBasis | null;
   try {
     basis = await dependencies.loadCurrentBasis();
@@ -186,6 +223,37 @@ export async function handleClientSubmissionPost(
   }
   if (!basis) {
     return json({ ok: false, code: "SUBMISSION_NOT_AVAILABLE" }, 404);
+  }
+
+  if (parsed.data.kind === "question") {
+    try {
+      const result = await dependencies.askQuestion({
+        questionId: dependencies.createQuestionId(session),
+        packetId: basis.packetId,
+        unitId: basis.unitId,
+        unitVersion: basis.version,
+        exactText: parsed.data.message,
+        modelProcessing: parsed.data.allowModel ? "permitted" : "denied",
+      });
+      return json({
+        ok: true,
+        submitted: true,
+        kind: "question",
+        duplicate: result.duplicate,
+        questionId: result.question.questionId,
+        unitId: result.question.unitId,
+        version: result.question.unitVersion,
+        digest: basis.digest,
+        communicationEffect: result.question.communicationEffect,
+        reviewHoldCreated: false,
+        agreementChanged: false,
+        paymentChanged: false,
+        readinessChanged: false,
+        workStartChanged: false,
+      }, result.duplicate ? 200 : 201);
+    } catch (error) {
+      return protocolFailure(error);
+    }
   }
 
   const source = parsed.data.source;

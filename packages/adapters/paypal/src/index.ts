@@ -182,6 +182,27 @@ export type PayPalCaptureDetails = Readonly<
   z.infer<typeof captureDetailsSchema>
 >;
 
+const orderCaptureDetailsSchema = z.strictObject({
+  captureId: identifier,
+  status: z.string().min(1).max(64),
+  currency: z.literal("USD"),
+  gross: moneySchema,
+});
+
+const orderDetailsSchema = z.strictObject({
+  orderId: identifier,
+  status: z.string().min(1).max(64),
+  merchantId: identifier,
+  environment: z.literal("sandbox"),
+  currency: z.literal("USD"),
+  gross: moneySchema,
+  captures: z.array(orderCaptureDetailsSchema).max(10),
+});
+
+export type PayPalOrderDetails = Readonly<
+  z.infer<typeof orderDetailsSchema>
+>;
+
 const refundDetailsSchema = z.strictObject({
   refundId: identifier,
   captureId: identifier,
@@ -614,6 +635,66 @@ export class PayPalSandboxClient {
     }));
   }
 
+  async retrieveOrderDetails(orderIdInput: unknown): Promise<PayPalOrderDetails> {
+    const orderId = parseInput(identifier, orderIdInput);
+    const response = await this.authorizedJson(
+      "GET",
+      `/v2/checkout/orders/${encodeURIComponent(orderId)}`,
+    );
+    const order = parseProviderResponse(
+      orderResponseSchema,
+      response.value,
+      response.debugId,
+    );
+    if (order.id !== orderId) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "PayPal Order retrieval returned a different resource identity",
+        undefined,
+        response.debugId,
+      );
+    }
+    if (order.purchase_units.length !== 1) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Expected one PayPal purchase unit during capture recovery",
+        undefined,
+        response.debugId,
+      );
+    }
+    const unit = order.purchase_units[0];
+    if (!unit) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Retrieved PayPal Order was missing its purchase unit",
+        undefined,
+        response.debugId,
+      );
+    }
+    if (unit.payee?.merchant_id !== this.config.merchantId) {
+      throw new PayPalAdapterError(
+        "MERCHANT_MISMATCH",
+        "Retrieved PayPal Order did not identify the configured merchant",
+        undefined,
+        response.debugId,
+      );
+    }
+    return Object.freeze(parseInput(orderDetailsSchema, {
+      orderId: order.id,
+      status: order.status,
+      merchantId: unit.payee.merchant_id,
+      environment: this.config.environment,
+      currency: unit.amount.currency_code,
+      gross: unit.amount.value,
+      captures: (unit.payments?.captures ?? []).map((capture) => ({
+        captureId: capture.id,
+        status: capture.status,
+        currency: capture.amount.currency_code,
+        gross: capture.amount.value,
+      })),
+    }));
+  }
+
   captureObservationFromDetails(
     admissionInput: unknown,
     detailsInput: unknown,
@@ -651,6 +732,76 @@ export class PayPalSandboxClient {
       gross: details.gross,
       orderId: details.orderId,
       captureId: details.captureId,
+      outcome,
+    });
+  }
+
+  captureObservationFromOrderDetails(
+    admissionInput: unknown,
+    detailsInput: unknown,
+  ): PaymentObservation {
+    const admission = this.parseAdmission(admissionInput, "capture");
+    const details = parseInput(orderDetailsSchema, detailsInput);
+    const request = admission.request;
+    if (
+      details.orderId !== request.orderId
+      || details.merchantId !== request.merchantId
+      || details.environment !== request.environment
+    ) {
+      throw new PayPalAdapterError(
+        "MERCHANT_MISMATCH",
+        "Retrieved Order identity did not match the admitted capture operation",
+      );
+    }
+    if (
+      details.currency !== request.currency
+      || details.gross !== request.gross
+    ) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Retrieved Order amount did not match the admitted capture operation",
+      );
+    }
+    if (details.captures.length !== 1) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Capture recovery requires exactly one capture linked by the original PayPal Order",
+      );
+    }
+    const capture = details.captures[0];
+    if (!capture) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Capture recovery did not find an exact linked capture",
+      );
+    }
+    if (
+      capture.currency !== request.currency
+      || capture.gross !== request.gross
+    ) {
+      throw new PayPalAdapterError(
+        "FINANCIAL_MISMATCH",
+        "Linked PayPal capture amount did not match the admitted operation",
+      );
+    }
+    const outcome = capture.status === "COMPLETED"
+      ? "completed"
+      : capture.status === "PENDING" ? "pending" : null;
+    if (!outcome) {
+      throw new PayPalAdapterError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Linked PayPal capture was not completed or pending",
+      );
+    }
+    return parseInput(observationSchema, {
+      operationId: admission.operationId,
+      evidence: this.captureEvidence(capture.captureId),
+      merchantId: details.merchantId,
+      environment: details.environment,
+      currency: capture.currency,
+      gross: capture.gross,
+      orderId: details.orderId,
+      captureId: capture.captureId,
       outcome,
     });
   }

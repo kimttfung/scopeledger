@@ -164,6 +164,19 @@ The Cedar Roastery seed creates version 1, the client correction, provider respo
 
 Migration 002 persists local access challenges, normalized verified PayPal webhook receipts and immutable PayPal approval links in PostgreSQL. Migration 003 adds immutable analysis source/run records and append-only human review dispositions. Codes remain keyed digests, raw webhook bodies are not stored, and changed duplicate provider identities fail closed.
 
+Migration 004 adds scoped provider-created project/request identities, immutable source-intake records, sequential authoring-draft revisions, exact draft-to-source references and communication-only client questions. The protected `/provider/authoring` workspace has exercised a real synthetic project, request, private text upload and two immutable draft revisions; publication remains deliberately unavailable.
+
+Prepare the ignored private local object root before source intake:
+
+```sh
+npm run prepare:object-storage
+npm run test:object-storage
+npm run test:provider-source-intake
+npm run test:provider-authoring
+```
+
+`@scopeledger/object-storage-adapter` writes content-addressed immutable bytes under a fixed absolute private root with atomic publication, private permissions, traversal/symlink rejection, bounded reads and integrity verification. Browser filenames and project/source IDs never become filesystem paths. The sanitized [authoring-foundation](tests/spikes/h1-authoring-foundation/acceptance.json), [object-storage](tests/spikes/object-storage/acceptance.json), [source-intake](tests/spikes/provider-source-intake/acceptance.json) and [provider-authoring](tests/spikes/provider-authoring/acceptance.json) manifests distinguish this local synthetic evidence from deployment/object-service proof.
+
 Stop only the owned container with `npm run dev:db:stop`; the persistent volume is retained. The [acceptance manifest](tests/spikes/demo-db/acceptance.json) records the current read-only integration boundary.
 
 ### Independent local analysis validation
@@ -203,11 +216,11 @@ Package and spike documentation records the public implementation boundaries and
 
 ## Prototype boundaries
 
-- All studio, client, source, scope, and price records are the synthetic fixture defined in the UX specification.
-- Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider analysis, protected provider operations, and printing are interactive.
-- A verified local client approver can record the exact seeded approve/decline decision after preview and submit missing-agreement context as a durable correction concern/review hold. Questions remain preview-only because the domain has no durable question record. A separately verified local payer can initiate only the server-recorded approved obligation, explicitly capture and verify the original Order after PayPal returns, and refresh the same attempt without redispatch. No browser-provided payment identity or amount is trusted, and model output is never authority.
+- All records remain synthetic, but protected providers can now create additional projects, requests, private source-intake records and immutable authoring drafts without changing fixtures or code. Published commercial terms still use the seeded Cedar Roastery flow.
+- Source context, historical terms, acknowledgment controls, decision previews, local channel verification, protected provider authoring/analysis/operations, private source intake, and printing are interactive.
+- A verified local client approver can record the exact seeded approve/decline decision after preview, submit missing-agreement context as a durable correction concern/review hold, and record questions as communication-only records with no hold or commercial effect. A separately verified local payer can initiate only the server-recorded approved obligation, explicitly capture and verify the original Order after PayPal returns, and refresh or discover the same Order-linked capture without redispatch. No browser-provided payment identity or amount is trusted, and model output is never authority.
 - `/provider/operations` keeps readiness and actual work start separate. A verified-email/MFA provider with the current synthetic product grant may record actual start only after the server locks and rechecks readiness and holds; the completed demo remains intentionally `not recorded`.
-- Form drafts live only in page memory. They are not saved to a server and are lost on refresh. Use synthetic text only.
+- Client message drafts live only in page memory and are lost on refresh before submission. Provider authoring revisions are persisted as immutable server records. Use synthetic text only.
 - Question and source fields each allow 10,000 Unicode code points. Longer input is preserved with a validation error, not silently truncated; previewing is blocked until it is corrected.
 - The static client preview can still render without external configuration. Connected identity, database, model, email and payment capabilities require the corresponding ignored local environment.
 - Browser previews and automated checks do not establish WCAG conformance or production readiness.

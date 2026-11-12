@@ -180,13 +180,17 @@ export async function main() {
   const arguments_ = process.argv.slice(2);
   const suiteArgument = arguments_.find((argument) => argument.startsWith("--suite="));
   const suite = suiteArgument?.slice("--suite=".length) ?? "ordered-consent";
-  const supportedSuites = new Set(["ordered-consent", "analysis-persistence"]);
+  const supportedSuites = new Set([
+    "ordered-consent",
+    "analysis-persistence",
+    "h1-authoring-foundation",
+  ]);
   if (
     !supportedSuites.has(suite)
     || arguments_.some((argument) =>
       argument !== "--check-runtime" && argument !== suiteArgument)
   ) {
-    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence.");
+    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|h1-authoring-foundation.");
     process.exitCode = 1;
     return;
   }

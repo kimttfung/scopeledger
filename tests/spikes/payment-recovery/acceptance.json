@@ -4,8 +4,8 @@
   "observedDate": "2026-11-11",
   "command": "npm run test:payment-recovery",
   "result": {
-    "tests": 7,
-    "passed": 7,
+    "tests": 13,
+    "passed": 13,
     "failed": 0
   },
   "proved": [
@@ -13,11 +13,13 @@
     "Browser-supplied payment identity and financial fields are rejected",
     "The real adapter path performs OAuth and capture retrieval without capture redispatch",
     "Authoritative identity changes never reach the domain reducer",
+    "An uncertain admitted capture with no stored capture ID is recovered only by read-only retrieval of the exact server-known Order",
+    "Exactly one matching completed or pending Order-linked capture is normalized under the stable capture operation and reduced through the ordinary domain observation path",
+    "Zero, multiple, mismatched, or unsupported Order-linked captures remain explicit manual recovery without dispatching capture or creating an attempt",
     "A completed sandbox attempt refreshed live as completed and ready"
   ],
   "notProved": [
-    "Order-to-capture discovery when no capture identity was stored",
-    "Controlled lost capture-response recovery",
+    "Actual sandbox lost capture-response recovery",
     "External refund or reversal recovery",
     "Scheduled deployed reconciliation"
   ],

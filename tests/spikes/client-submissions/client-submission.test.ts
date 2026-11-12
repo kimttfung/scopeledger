@@ -5,6 +5,7 @@ import {
 } from "../../../apps/web/app/api/demo/client-submission/service.js";
 import type {
   CorrectionCommand,
+  QuestionCommand,
   SubmissionDependencies,
 } from "../../../apps/web/app/api/demo/client-submission/service.js";
 
@@ -37,18 +38,41 @@ function correction(overrides: Record<string, unknown> = {}): object {
   };
 }
 
+function question(overrides: Record<string, unknown> = {}): object {
+  return {
+    kind: "question",
+    message: "Which source governs this charge?",
+    allowModel: false,
+    ...overrides,
+  };
+}
+
 function dependencies(
   overrides: Partial<SubmissionDependencies> = {},
 ): SubmissionDependencies {
   return {
     requireSameOrigin: () => undefined,
-    readSession: async () => ({ role: "client-approver" }),
+    readSession: async () => ({
+      role: "client-approver",
+      challengeId: "00000000-0000-4000-8000-000000000003",
+    }),
     loadCurrentBasis: async () => currentBasis,
+    askQuestion: async (command) => ({
+      duplicate: false,
+      question: {
+        questionId: command.questionId,
+        packetId: command.packetId,
+        unitId: command.unitId,
+        unitVersion: command.unitVersion,
+        communicationEffect: "communication-only",
+      },
+    }),
     admitCorrection: async (command) => ({
       concernId: command.concernId,
       impactRevision: 1,
       affectedUnitIds: [command.originUnitId],
     }),
+    createQuestionId: () => "00000000-0000-5000-8000-000000000004",
     createCommandId: () => "00000000-0000-4000-8000-000000000001",
     createConcernId: () => "client-00000000-0000-4000-8000-000000000002",
     ...overrides,
@@ -70,7 +94,10 @@ test("cross-origin requests fail before session or PostgreSQL access", async () 
       },
       readSession: async () => {
         sessionRead = true;
-        return { role: "client-approver" };
+        return {
+          role: "client-approver",
+          challengeId: "00000000-0000-4000-8000-000000000003",
+        };
       },
       loadCurrentBasis: async () => {
         basisLoaded = true;
@@ -91,7 +118,10 @@ test("cross-origin requests fail before session or PostgreSQL access", async () 
 test("only a verified client approver can reach the current review basis", async () => {
   for (const [session, status, code] of [
     [null, 401, "CLIENT_ACCESS_REQUIRED"],
-    [{ role: "payer" as const }, 403, "CLIENT_APPROVER_REQUIRED"],
+    [{
+      role: "payer" as const,
+      challengeId: "00000000-0000-4000-8000-000000000003",
+    }, 403, "CLIENT_APPROVER_REQUIRED"],
   ] as const) {
     let basisLoaded = false;
     const response = await handleClientSubmissionPost(
@@ -137,38 +167,196 @@ test("browser-owned version, digest, concern, actor and payment fields are rejec
   assert.equal(basisLoaded, false);
 });
 
-test("questions fail closed because the domain has no durable question command", async () => {
+test("questions accept only exact text plus separate model permission", async () => {
   let basisLoaded = false;
-  let admitted = false;
+  let asked = false;
   const response = await handleClientSubmissionPost(
-    request({
-      kind: "question",
-      message: "Which source governs this charge?",
-      allowModel: false,
-    }),
+    request(question({
+      workspaceId: "browser-workspace",
+      projectId: "browser-project",
+      questionId: "00000000-0000-4000-8000-000000000099",
+      requestId: "browser-request",
+      unitId: "browser-unit",
+      version: 99,
+      actorId: "browser-actor",
+      askedAt: "2026-11-11T00:00:00.000Z",
+      digest: "b".repeat(64),
+      communicationEffect: "commercial",
+      hold: true,
+      decision: "approve",
+      payment: "paid",
+      readiness: "ready",
+      workStart: true,
+      source: "browser-source",
+    })),
     dependencies({
       loadCurrentBasis: async () => {
         basisLoaded = true;
         return currentBasis;
       },
-      admitCorrection: async (command) => {
-        admitted = true;
+      askQuestion: async (command) => {
+        asked = true;
         return {
-          concernId: command.concernId,
-          impactRevision: 1,
-          affectedUnitIds: [command.originUnitId],
+          duplicate: false,
+          question: {
+            questionId: command.questionId,
+            packetId: command.packetId,
+            unitId: command.unitId,
+            unitVersion: command.unitVersion,
+            communicationEffect: "communication-only",
+          },
         };
       },
     }),
   );
 
-  assert.equal(response.status, 409);
+  assert.equal(response.status, 422);
   assert.deepEqual(await body(response), {
     ok: false,
-    code: "QUESTION_SUBMISSION_UNSUPPORTED",
+    code: "INVALID_SUBMISSION_INPUT",
   });
   assert.equal(basisLoaded, false);
-  assert.equal(admitted, false);
+  assert.equal(asked, false);
+});
+
+test("questions bind exact text and model permission to the server-current basis", async () => {
+  const exactText = "  ¿Which source governs “Café”? 😀\nPlease confirm.\t  ";
+  const asked: QuestionCommand[] = [];
+  let idInput: Parameters<SubmissionDependencies["createQuestionId"]>[0] | null = null;
+  let correctionAdmitted = false;
+  const response = await handleClientSubmissionPost(
+    request(question({ message: exactText, allowModel: true })),
+    dependencies({
+      askQuestion: async (command) => {
+        asked.push(command);
+        return {
+          duplicate: false,
+          question: {
+            questionId: command.questionId,
+            packetId: command.packetId,
+            unitId: command.unitId,
+            unitVersion: command.unitVersion,
+            communicationEffect: "communication-only",
+          },
+        };
+      },
+      admitCorrection: async () => {
+        correctionAdmitted = true;
+        throw new Error("correction path must not run");
+      },
+      createQuestionId: (session) => {
+        idInput = session;
+        return "00000000-0000-5000-8000-000000000004";
+      },
+    }),
+  );
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(idInput, {
+    role: "client-approver",
+    challengeId: "00000000-0000-4000-8000-000000000003",
+  });
+  assert.deepEqual(asked, [{
+    questionId: "00000000-0000-5000-8000-000000000004",
+    packetId: currentBasis.packetId,
+    unitId: currentBasis.unitId,
+    unitVersion: currentBasis.version,
+    exactText,
+    modelProcessing: "permitted",
+  }]);
+  assert.equal(correctionAdmitted, false);
+  assert.deepEqual(await body(response), {
+    ok: true,
+    submitted: true,
+    kind: "question",
+    duplicate: false,
+    questionId: "00000000-0000-5000-8000-000000000004",
+    unitId: currentBasis.unitId,
+    version: currentBasis.version,
+    digest: currentBasis.digest,
+    communicationEffect: "communication-only",
+    reviewHoldCreated: false,
+    agreementChanged: false,
+    paymentChanged: false,
+    readinessChanged: false,
+    workStartChanged: false,
+  });
+});
+
+test("question replay is idempotent and changed replay conflicts safely", async () => {
+  const replay = await handleClientSubmissionPost(
+    request(question()),
+    dependencies({
+      askQuestion: async (command) => ({
+        duplicate: true,
+        question: {
+          questionId: command.questionId,
+          packetId: command.packetId,
+          unitId: command.unitId,
+          unitVersion: command.unitVersion,
+          communicationEffect: "communication-only",
+        },
+      }),
+    }),
+  );
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json() as { duplicate: boolean }).duplicate, true);
+
+  const conflict = await handleClientSubmissionPost(
+    request(question({ message: "Changed replay text." })),
+    dependencies({
+      askQuestion: async () => {
+        throw Object.assign(new Error("internal persistence detail"), {
+          code: "QUESTION_CONFLICT",
+        });
+      },
+    }),
+  );
+  assert.equal(conflict.status, 409);
+  assert.deepEqual(await body(conflict), {
+    ok: false,
+    code: "SUBMISSION_STATE_CHANGED",
+  });
+});
+
+test("question validation counts Unicode code points and rejects control characters", async () => {
+  const acceptedText = "😀".repeat(10_000);
+  let recorded = "";
+  const accepted = await handleClientSubmissionPost(
+    request(question({ message: acceptedText })),
+    dependencies({
+      askQuestion: async (command) => {
+        recorded = command.exactText;
+        return {
+          duplicate: false,
+          question: {
+            questionId: command.questionId,
+            packetId: command.packetId,
+            unitId: command.unitId,
+            unitVersion: command.unitVersion,
+            communicationEffect: "communication-only",
+          },
+        };
+      },
+    }),
+  );
+  assert.equal(accepted.status, 201);
+  assert.equal(recorded, acceptedText);
+
+  for (const [message, code] of [
+    [`${acceptedText}😀`, "SUBMISSION_TEXT_LIMIT"],
+    ["Question\u0000text", "INVALID_SUBMISSION_INPUT"],
+    ["Question\rtext", "INVALID_SUBMISSION_INPUT"],
+    ["Question\u0085text", "INVALID_SUBMISSION_INPUT"],
+    ["\ud800", "INVALID_SUBMISSION_INPUT"],
+  ] as const) {
+    const rejected = await handleClientSubmissionPost(
+      request(question({ message })),
+      dependencies(),
+    );
+    assert.equal(rejected.status, 422);
+    assert.deepEqual(await body(rejected), { ok: false, code });
+  }
 });
 
 test("Unicode limits count code points and preserve valid text", async () => {

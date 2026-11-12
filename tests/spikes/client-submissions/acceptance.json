@@ -1,23 +1,27 @@
 {
-  "task": "client-context-correction-submission",
+  "task": "durable-client-question-and-correction-submission",
   "profile": "local-synthetic-postgresql",
   "observedDate": "2026-11-11",
   "command": "npm run test:client-submissions",
   "result": {
-    "tests": 10,
-    "passed": 10,
+    "tests": 14,
+    "passed": 14,
     "failed": 0
   },
   "proved": [
     "Same-origin verified client-approver access is required",
-    "The server owns the current version, digest, actor and concern identity",
+    "The server owns the current request, unit, version, digest, actor, question identity and concern identity",
     "Unicode code-point limits preserve valid input without silent truncation",
+    "Question input is restricted to exact text and separate model-processing permission",
+    "The protected route records questions through PostgresAuthoringStore as communication-only",
+    "Same-content question replay is idempotent while changed replay conflicts safely",
+    "Question success reports no review hold or agreement, payment, readiness or work-start change and makes no notification-delivery claim",
     "An explicit correction creates a durable concern and review hold without changing decision or payment facts",
     "Unavailable source context remains an honest supported path"
   ],
   "notProved": [
-    "Durable question submission because the domain has no question record contract",
     "External notification delivery",
+    "A browser-to-PostgreSQL question submission against a deployed multi-user service",
     "Provider reconciliation and reissue of the new concern",
     "Public multi-user deployment"
   ],

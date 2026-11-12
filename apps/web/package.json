@@ -17,6 +17,7 @@
     "@scopeledger/domain": "0.1.0",
     "@scopeledger/email-adapter": "0.1.0",
     "@scopeledger/gemini-adapter": "0.1.0",
+    "@scopeledger/object-storage-adapter": "0.1.0",
     "@scopeledger/parser-adapter": "0.1.0",
     "@scopeledger/paypal-adapter": "0.1.0",
     "jose": "6.2.17",

@@ -117,6 +117,9 @@ export default async function ProviderPage() {
         server-side grants; authentication alone grants no commercial authority.
       </p>
       <p>
+        <a href="/provider/authoring">Open provider authoring</a>
+      </p>
+      <p>
         <a href="/provider/analysis">Open protected PDF analysis</a>
       </p>
       <p>

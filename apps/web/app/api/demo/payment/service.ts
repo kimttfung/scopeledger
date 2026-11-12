@@ -99,6 +99,16 @@ export type PaymentJourneyDependencies = Readonly<{
     matchesBasis: boolean;
     completed: boolean;
   }>>;
+  reconcileOrderCapture?: (
+    target: Readonly<{
+      operationId: string;
+      orderId: string;
+    }>,
+  ) => Promise<Readonly<{
+    outcome: Exclude<ProviderPaymentState, "unknown">;
+    matchesBasis: boolean;
+    completed: boolean;
+  }>>;
   inspectReadiness: () => Promise<PaymentReadiness>;
   createCommandId: () => string;
 }>;
@@ -130,6 +140,7 @@ const manualRecoveryCodes = new Set([
   "MERCHANT_MISMATCH",
   "NOT_FOUND",
   "PROVIDER_RESPONSE_INVALID",
+  "RECONCILIATION_CAPTURE_UNRESOLVED",
   "RECONCILIATION_REQUIRED",
   "RECONCILIATION_TARGET_MISMATCH",
 ]);
@@ -257,12 +268,42 @@ function reconciliationTarget(
   };
 }
 
+function orderReconciliationTarget(
+  snapshot: PaymentAttemptSnapshot,
+): Readonly<{
+  operationId: string;
+  orderId: string;
+}> | null {
+  const capture = operation(snapshot, "capture");
+  if (
+    !snapshot.orderId
+    || !capture
+    || capture.captureId
+    || !["admitted", "pending", "unknown", "result"].includes(capture.state)
+  ) {
+    return null;
+  }
+  return {
+    operationId: capture.operationId,
+    orderId: snapshot.orderId,
+  };
+}
+
 function recoveryFromSnapshot(
+  dependencies: PaymentJourneyDependencies,
   snapshot: PaymentAttemptSnapshot,
   state: SafePaymentState,
 ): PaymentRecoveryState | null {
   if (!hasRecoveryMetadata(snapshot)) return null;
-  if (reconciliationTarget(snapshot)) return "refresh-available";
+  if (
+    (reconciliationTarget(snapshot) && dependencies.reconcileCapture)
+    || (
+      orderReconciliationTarget(snapshot)
+      && dependencies.reconcileOrderCapture
+    )
+  ) {
+    return "refresh-available";
+  }
   if (
     state === "pending"
     || state === "completed"
@@ -339,7 +380,7 @@ async function resultFromSnapshot(
     ? providerStateFromSnapshot(snapshot, state)
     : null;
   const recovery = snapshot
-    ? recoveryFromSnapshot(snapshot, state)
+    ? recoveryFromSnapshot(dependencies, snapshot, state)
     : null;
   return {
     state,
@@ -501,8 +542,16 @@ export async function reconcileCheckout(
       { code: "CHECKOUT_NOT_PREPARED" },
     );
   }
-  const target = reconciliationTarget(snapshot);
-  if (!target || !dependencies.reconcileCapture) {
+  const knownCaptureTarget = reconciliationTarget(snapshot);
+  const orderCaptureTarget = orderReconciliationTarget(snapshot);
+  const reconcileCapture = dependencies.reconcileCapture;
+  const reconcileOrderCapture = dependencies.reconcileOrderCapture;
+  const reconcile = knownCaptureTarget && reconcileCapture
+    ? () => reconcileCapture(knownCaptureTarget)
+    : orderCaptureTarget && reconcileOrderCapture
+      ? () => reconcileOrderCapture(orderCaptureTarget)
+      : null;
+  if (!reconcile) {
     const unresolved = await resultFromSnapshot(dependencies, snapshot);
     if (
       unresolved.state !== "pending"
@@ -518,11 +567,13 @@ export async function reconcileCheckout(
     };
   }
 
-  let reconciled: Awaited<
-    ReturnType<NonNullable<PaymentJourneyDependencies["reconcileCapture"]>>
-  >;
+  let reconciled: Readonly<{
+    outcome: ProviderPaymentState;
+    matchesBasis: boolean;
+    completed: boolean;
+  }>;
   try {
-    reconciled = await dependencies.reconcileCapture(target);
+    reconciled = await reconcile();
   } catch (reconciliationError) {
     const code = errorCode(reconciliationError);
     if (!code || !manualRecoveryCodes.has(code)) {

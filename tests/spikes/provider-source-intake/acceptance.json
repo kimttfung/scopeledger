@@ -1,0 +1,21 @@
+{
+  "task": "protected-provider-source-intake",
+  "profile": "local-synthetic-auth0-postgresql-object-storage",
+  "observedDate": "2026-11-11",
+  "command": "npm run test:provider-source-intake",
+  "result": { "tests": 17, "passed": 17, "failed": 0 },
+  "proved": [
+    "Same-origin Auth0 verified-email/MFA plus product grant",
+    "PDF, text and Markdown admission with exact 10 MB limit",
+    "Server-owned IDs, actor, timestamps, digest and storage binding",
+    "Immutable storage before matching scoped PostgreSQL intake",
+    "Safe request-scoped source summaries without paths or raw digests",
+    "Honest partial-failure and conflict behavior"
+  ],
+  "notProved": [
+    "Parser or model dispatch from an admitted source",
+    "Source replacement or supersession",
+    "Deployed object storage or real private-document permission"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

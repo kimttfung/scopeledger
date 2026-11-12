@@ -67,6 +67,96 @@ function pendingAttempt(
   };
 }
 
+function captureAdmission(): DispatchAdmission {
+  return {
+    dispatchAllowed: false,
+    reconciliationRequired: true,
+    operationId: captureOperationId,
+    providerKey: captureOperationId,
+    kind: "capture",
+    request: {
+      schemaVersion: "scopeledger.payment-operation.v1",
+      obligationId: "server-obligation",
+      unitId: "unit-u1",
+      version: 2,
+      kind: "capture",
+      merchantId: "server-merchant",
+      environment: "sandbox",
+      currency: "USD",
+      gross: "300.00",
+      orderId,
+    },
+    requestHash: "a".repeat(64),
+  };
+}
+
+function retrievedOrder(options: Readonly<{
+  captures?: readonly Readonly<{
+    id: string;
+    status: string;
+    gross?: string;
+  }>[];
+  merchantId?: string;
+  resourceId?: string;
+  orderGross?: string;
+}> = {}) {
+  return {
+    id: options.resourceId ?? orderId,
+    status: "COMPLETED",
+    purchase_units: [{
+      reference_id: "server-obligation",
+      amount: {
+        currency_code: "USD",
+        value: options.orderGross ?? "300.00",
+      },
+      payee: {
+        merchant_id: options.merchantId ?? "server-merchant",
+      },
+      payments: {
+        captures: (options.captures ?? []).map((capture) => ({
+          id: capture.id,
+          status: capture.status,
+          amount: {
+            currency_code: "USD",
+            value: capture.gross ?? "300.00",
+          },
+        })),
+      },
+    }],
+  };
+}
+
+function orderRecoveryClient(orderResponse: unknown) {
+  const calls: { url: string; method: string }[] = [];
+  const client = new PayPalSandboxClient(
+    {
+      environment: "sandbox",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      merchantId: "server-merchant",
+      returnUrl: "http://localhost/payments/paypal/return",
+      cancelUrl: "http://localhost/payments/paypal/cancel",
+    },
+    {
+      fetch: async (input, init) => {
+        const url = input instanceof Request
+          ? input.url
+          : input.toString();
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (url.endsWith("/v1/oauth2/token")) {
+          return Response.json({
+            access_token: "access-token",
+            expires_in: 3_600,
+          });
+        }
+        return Response.json(orderResponse);
+      },
+    },
+  );
+  return { calls, client };
+}
+
 function dependencies(
   snapshot: PaymentAttemptSnapshot,
   overrides: Partial<PaymentJourneyDependencies> = {},
@@ -125,6 +215,67 @@ function dependencies(
     },
     ...overrides,
   };
+}
+
+async function reconcileUnknownOrderThroughApi(orderResponse: unknown) {
+  let snapshot = pendingAttempt(null);
+  const recorded: PaymentObservation[] = [];
+  const network = orderRecoveryClient(orderResponse);
+  const reconciler = new PayPalCaptureReconciler(
+    {
+      async captureReconciliationAdmission(
+        _scope,
+        receivedOrderId,
+      ) {
+        assert.equal(receivedOrderId, orderId);
+        return captureAdmission();
+      },
+      async recordObservation(_scope, observation) {
+        recorded.push(observation);
+        assert.ok(observation.captureId);
+        const observedCaptureId = observation.captureId;
+        snapshot = {
+          ...snapshot,
+          state: observation.outcome === "completed" ? "completed" : "pending",
+          operations: snapshot.operations.map((candidate) =>
+            candidate.kind === "capture"
+              ? {
+                ...candidate,
+                state: observation.outcome === "completed"
+                  ? "result"
+                  : "pending",
+                captureId: observedCaptureId,
+              }
+              : candidate),
+        };
+        return {
+          matchesBasis: true,
+          completed: observation.outcome === "completed",
+        };
+      },
+    },
+    network.client,
+  );
+  const response = await handlePaymentReconcilePost(
+    request(),
+    dependencies(snapshot, {
+      async loadAttempt() {
+        return snapshot;
+      },
+      async inspectReadiness() {
+        return snapshot.state === "completed"
+          ? "ready"
+          : "awaiting-payment";
+      },
+      reconcileOrderCapture(target) {
+        return reconciler.reconcileOrderCapture(
+          { workspaceId: "demo-workspace", projectId: "cedar-roastery" },
+          target,
+        );
+      },
+    }),
+  );
+  return { calls: network.calls, recorded, response };
 }
 
 test("empty browser POST refreshes only the server-known capture without duplicate dispatch", async () => {
@@ -372,6 +523,172 @@ test("real PayPal adapter accepts read-only reconciliation admission without cap
       method: "GET",
     },
   ]);
+});
+
+test("Order retrieval exposes only captures linked under the exact fixed-origin Order", async () => {
+  const network = orderRecoveryClient(retrievedOrder({
+    captures: [{
+      id: captureId,
+      status: "COMPLETED",
+    }],
+  }));
+  const details = await network.client.retrieveOrderDetails(orderId);
+  assert.deepEqual(details, {
+    orderId,
+    status: "COMPLETED",
+    merchantId: "server-merchant",
+    environment: "sandbox",
+    currency: "USD",
+    gross: "300.00",
+    captures: [{
+      captureId,
+      status: "COMPLETED",
+      currency: "USD",
+      gross: "300.00",
+    }],
+  });
+  assert.deepEqual(network.calls, [
+    {
+      url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      method: "POST",
+    },
+    {
+      url:
+        `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderId}`,
+      method: "GET",
+    },
+  ]);
+});
+
+test("one exact Order-linked completed capture reduces the stable admitted operation without capture POST", async () => {
+  const recovered = await reconcileUnknownOrderThroughApi(retrievedOrder({
+    captures: [{
+      id: captureId,
+      status: "COMPLETED",
+    }],
+  }));
+  assert.equal(recovered.response.status, 200);
+  assert.deepEqual(await recovered.response.json(), {
+    ok: true,
+    state: "completed",
+    readiness: "ready",
+    providerState: "completed",
+    recovery: "refresh-available",
+  });
+  assert.equal(recovered.recorded.length, 1);
+  assert.deepEqual(recovered.recorded[0], {
+    operationId: captureOperationId,
+    evidence: {
+      kind: "synthetic-fault",
+      scenario: "Injected local PayPal capture-retrieval fixture; no provider authentication or provider call occurred",
+    },
+    merchantId: "server-merchant",
+    environment: "sandbox",
+    currency: "USD",
+    gross: "300.00",
+    orderId,
+    captureId,
+    outcome: "completed",
+  });
+  assert.deepEqual(recovered.calls, [
+    {
+      url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      method: "POST",
+    },
+    {
+      url:
+        `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderId}`,
+      method: "GET",
+    },
+  ]);
+  assert.equal(
+    recovered.calls.some((call) =>
+      call.url.endsWith(`/v2/checkout/orders/${orderId}/capture`)
+    ),
+    false,
+  );
+});
+
+test("one exact Order-linked pending capture remains pending through ordinary reduction", async () => {
+  const recovered = await reconcileUnknownOrderThroughApi(retrievedOrder({
+    captures: [{
+      id: captureId,
+      status: "PENDING",
+    }],
+  }));
+  assert.equal(recovered.response.status, 200);
+  assert.deepEqual(await recovered.response.json(), {
+    ok: true,
+    state: "pending",
+    readiness: "awaiting-payment",
+    providerState: "pending",
+    recovery: "refresh-available",
+  });
+  assert.equal(recovered.recorded.length, 1);
+  assert.equal(recovered.recorded[0]?.outcome, "pending");
+  assert.equal(recovered.recorded[0]?.operationId, captureOperationId);
+});
+
+test("zero Order-linked captures remain explicit manual recovery", async () => {
+  const recovered = await reconcileUnknownOrderThroughApi(retrievedOrder());
+  assert.equal(recovered.response.status, 200);
+  assert.deepEqual(await recovered.response.json(), {
+    ok: true,
+    state: "reconciliation-required",
+    readiness: "awaiting-payment",
+    providerState: "unknown",
+    recovery: "manual-recovery-required",
+  });
+  assert.equal(recovered.recorded.length, 0);
+});
+
+test("multiple Order-linked captures are never disambiguated", async () => {
+  const recovered = await reconcileUnknownOrderThroughApi(retrievedOrder({
+    captures: [
+      { id: captureId, status: "COMPLETED" },
+      { id: "SECOND_CAPTURE", status: "COMPLETED" },
+    ],
+  }));
+  assert.equal(recovered.response.status, 200);
+  assert.deepEqual(await recovered.response.json(), {
+    ok: true,
+    state: "reconciliation-required",
+    readiness: "awaiting-payment",
+    providerState: "unknown",
+    recovery: "manual-recovery-required",
+  });
+  assert.equal(recovered.recorded.length, 0);
+});
+
+test("mismatched Order or capture financial identity never reaches reduction", async () => {
+  for (const response of [
+    retrievedOrder({
+      captures: [{ id: captureId, status: "COMPLETED", gross: "299.00" }],
+    }),
+    retrievedOrder({
+      captures: [{ id: captureId, status: "COMPLETED" }],
+      merchantId: "different-merchant",
+    }),
+    retrievedOrder({
+      captures: [{ id: captureId, status: "COMPLETED" }],
+      orderGross: "299.00",
+    }),
+    retrievedOrder({
+      captures: [{ id: captureId, status: "COMPLETED" }],
+      resourceId: "DIFFERENT_ORDER",
+    }),
+  ]) {
+    const recovered = await reconcileUnknownOrderThroughApi(response);
+    assert.equal(recovered.response.status, 200);
+    assert.deepEqual(await recovered.response.json(), {
+      ok: true,
+      state: "reconciliation-required",
+      readiness: "awaiting-payment",
+      providerState: "unknown",
+      recovery: "manual-recovery-required",
+    });
+    assert.equal(recovered.recorded.length, 0);
+  }
 });
 
 test("changed authoritative identity never reaches the domain reducer", async () => {

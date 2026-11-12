@@ -5,15 +5,16 @@ import type { ColumnType, Generated, Transaction } from "kysely";
 import { migration001 } from "./migrations/001-ordered-consent.js";
 import { migration002 } from "./migrations/002-runtime-persistence.js";
 import { migration003 } from "./migrations/003-analysis-persistence.js";
+import { migration004 } from "./migrations/004-authoring-foundation.js";
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type Json = ColumnType<unknown, string, string>;
 interface Scope { workspace_id: string; project_id: string }
 export interface Database {
   workspaces: { id: string; merchant_id: string; environment: "sandbox" | "live" };
-  projects: { workspace_id: string; id: string; client_id: string; approver_id: string; nomination_epoch: Generated<number>; context_revision: Generated<number> };
+  projects: { workspace_id: string; id: string; client_id: string; approver_id: string; nomination_epoch: Generated<number>; context_revision: Generated<number>; provider_display_name: Generated<string | null>; provider_created_by: Generated<string | null>; provider_created_at: Generated<Date | null>; provider_initial_client_id: Generated<string | null>; provider_initial_approver_id: Generated<string | null>; provider_creation_digest: Generated<string | null> };
   grants: Scope & { actor_id: string; action: string; epoch: Generated<number>; active: Generated<boolean> };
-  packets: Scope & { id: string };
+  packets: Scope & { id: string; provider_title: Generated<string | null>; provider_created_by: Generated<string | null>; provider_created_at: Generated<Date | null>; provider_creation_digest: Generated<string | null> };
   units: Scope & { id: string; packet_id: string; current_version: number | null; accepted_version: number | null };
   unit_versions: Scope & { unit_id: string; version: number; snapshot: Json; canonical_bytes: Buffer; digest: string; published_by: string; published_at: Timestamp };
   decisions: Scope & { unit_id: string; version: number; decision: "approve" | "decline"; actor_id: string; nomination_epoch: number; digest: string; attestation: Json; resolution: Json; recorded_at: Timestamp };
@@ -31,6 +32,10 @@ export interface Database {
   analysis_source_coverage: Scope & { source_id: string; version_id: string; page_number: number; status: "extracted" | "unavailable"; start_offset: number | null; end_offset: number | null; reason_code: "parser-reported-unavailable" | null };
   analysis_runs: Scope & { run_id: string; requested_by_subject_digest: string; source_id: string; source_version_id: string; provider_reference: "manual" | "google-gemini"; model_reference: string | null; candidate_schema_reference: "scopeledger.analysis-candidates.v1"; config_reference: "scopeledger.analysis.manual.v1" | "scopeledger.gemini.server-config.v1"; status: "manual-review-ready" | "candidate-ready" | "model-failed"; candidate_payload: Json | null; candidate_digest: string | null; failure_code: string | null; failure_message: string | null; human_review_required: true; publication_blocked: true; run_digest: string; created_at: Timestamp };
   analysis_human_reviews: Scope & { review_id: string; run_id: string; reviewer_subject_digest: string; reviewed_at: Timestamp; disposition: "accept" | "edit" | "reject" | "manual"; note: string; run_basis_digest: string; candidate_basis_digest: string | null };
+  source_intake_records: Scope & { source_id: string; source_version: number; source_kind: "provider-upload" | "provider-note" | "client-supplied" | "external-reference"; media_type: string; original_name: string | null; declared_byte_length: number; content_digest: string | null; provenance_origin: "agreement" | "amendment" | "correspondence" | "request" | "prior-decision" | "correction" | "other"; supplied_by: string; origin_reference: string | null; acceptance_kind: "provider-attested-import" | "in-app-record-reference" | "unverified"; acceptance_basis: string; studio_sharing: "permitted" | "denied" | "unresolved"; model_processing: "permitted" | "denied" | "unresolved"; model_input_review_status: "cleared" | "not-reviewed" | "unresolved" | "prohibited-financial-data"; model_reviewed_by: string | null; model_reviewed_at: Timestamp | null; model_review_basis: string; recorded_at: Timestamp; record_digest: string };
+  provider_authoring_draft_versions: Scope & { request_id: string; unit_id: string; revision: number; state: "in-progress" | "ready-for-client-review"; title: string; summary: string; scope_items: Json; exclusion_items: Json; source_count: number; draft_digest: string; authored_by: string; created_at: Timestamp };
+  provider_authoring_draft_sources: Scope & { unit_id: string; draft_revision: number; position: number; source_id: string; source_version: number };
+  client_questions: Scope & { question_id: string; request_id: string; unit_id: string; unit_version: number; asked_by: string; exact_text: string; model_processing: "permitted" | "denied"; communication_effect: Generated<"communication-only">; asked_at: Timestamp; record_digest: string };
 }
 export type ProtocolTransaction = Transaction<Database>;
 export type SqlExecutor = Kysely<Database> | ProtocolTransaction;
@@ -136,6 +141,7 @@ export class ProtocolDatabase {
         { version: 1, source: migration001 },
         { version: 2, source: migration002 },
         { version: 3, source: migration003 },
+        { version: 4, source: migration004 },
       ] as const;
       if (applied.some((version, index) => version !== index + 1)
           || applied.length > migrations.length) {
@@ -187,6 +193,7 @@ export async function createIsolatedProofDatabase(connectionString: string): Pro
   };
 }
 
-export { migration001, migration002, migration003, sql };
+export { migration001, migration002, migration003, migration004, sql };
 export * from "./runtime-persistence.js";
 export * from "./analysis-persistence.js";
+export * from "./authoring-foundation.js";

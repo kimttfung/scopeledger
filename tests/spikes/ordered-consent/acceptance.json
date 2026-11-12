@@ -10,7 +10,7 @@
   },
   "schemaVersion": "scopeledger.published-unit.v1",
   "serializationVersion": "scopeledger.canonical-json.v1",
-  "sqlMigration": 3,
+  "sqlMigration": 4,
   "tooling": { "node": "26.0.0", "typescript": "6.0.3", "tsx": "4.23.15" },
   "database": {
     "engine": "PostgreSQL",

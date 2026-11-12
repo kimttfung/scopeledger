@@ -1,6 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
-import { sql } from "@scopeledger/db";
+import {
+  PostgresAuthoringStore,
+  sql,
+} from "@scopeledger/db";
 import { OrderedConsentStore } from "@scopeledger/domain";
 import {
   localAccessRuntime,
@@ -19,6 +22,24 @@ const actor = {
   grantEpoch: 1,
 };
 const reviewedUnitId = "unit-u1";
+
+function questionIdFor(challengeId: string): string {
+  const hex = createHash("sha256").update(JSON.stringify([
+    "scopeledger-client-question-v1",
+    actor.workspaceId,
+    actor.projectId,
+    actor.actorId,
+    challengeId,
+  ])).digest("hex");
+  const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `8${hex.slice(13, 16)}`,
+    `${variant}${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join("-");
+}
 
 export async function POST(request: Request): Promise<Response> {
   const access = localAccessRuntime();
@@ -42,6 +63,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   const store = new OrderedConsentStore(database);
+  const authoringStore = new PostgresAuthoringStore(database);
   return handleClientSubmissionPost(request, {
     requireSameOrigin,
     readSession: async () => {
@@ -79,7 +101,31 @@ export async function POST(request: Request): Promise<Response> {
         }
         : null;
     }),
+    askQuestion: async (command) => {
+      const result = await authoringStore.askQuestion({
+        workspaceId: actor.workspaceId,
+        projectId: actor.projectId,
+        questionId: command.questionId,
+        requestId: command.packetId,
+        unitId: command.unitId,
+        unitVersion: command.unitVersion,
+        askedBy: actor.actorId,
+        exactText: command.exactText,
+        modelProcessing: command.modelProcessing,
+      });
+      return {
+        duplicate: result.duplicate,
+        question: {
+          questionId: result.question.questionId,
+          packetId: result.question.requestId,
+          unitId: result.question.unitId,
+          unitVersion: result.question.unitVersion,
+          communicationEffect: result.question.communicationEffect,
+        },
+      };
+    },
     admitCorrection: async (command) => store.admitCorrection(actor, command),
+    createQuestionId: (session) => questionIdFor(session.challengeId),
     createCommandId: randomUUID,
     createConcernId: () => `client-${randomUUID()}`,
   });
