@@ -1,6 +1,6 @@
 # PayPal sandbox adapter
 
-Private ESM package `@scopeledger/paypal-adapter`. It is the narrow development foundation for IP-02, not evidence that IP-02 or the H1 payment journey is complete.
+Private ESM package `@scopeledger/paypal-adapter`. It is the narrow development foundation for IP-02, not evidence that IP-02 or the Judging Release payment journey is complete.
 
 The adapter:
 

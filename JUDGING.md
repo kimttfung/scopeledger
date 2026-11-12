@@ -1,6 +1,6 @@
-# H1 judging guide
+# Local judging guide
 
-ScopeLedger’s judgeable H1 profile is local, reproducible, synthetic and PostgreSQL-backed. The automated runner never performs a real PayPal create/capture/refund, Auth0 login, Gemini call or external email delivery.
+ScopeLedger's judging profile is local, reproducible, synthetic and PostgreSQL-backed. The automated runner never performs a real PayPal create/capture/refund, Auth0 login, Gemini call or external email delivery.
 
 ## Fresh clone
 
@@ -13,7 +13,7 @@ npm run prepare:dev-db
 npm run prepare:access-secret
 npm run prepare:auth0-secret
 npm run prepare:object-storage
-npm run prepare:h1-operations
+npm run prepare:judge-operations
 npm run dev:db:start
 npm run dev:db:migrate
 npm run seed:demo
@@ -34,8 +34,8 @@ Open <http://127.0.0.1:3000>. Mailpit is available only on the local machine at 
 Run from a clean checkout:
 
 ```sh
-node scripts/run-h1-acceptance.mjs --quick
-node scripts/run-h1-acceptance.mjs --full
+npm run judge:acceptance:quick
+npm run judge:acceptance:full
 ```
 
 Quick verifies the local profile, migration chain, PostgreSQL, Mailpit, private object root, build/typecheck/lint, core zero-skip suites, and localhost routes when the development server is running.
@@ -45,7 +45,7 @@ Full adds the documented local protocol, authoring/publication, dynamic review, 
 Reports are written to ignored `.scopeledger-local/evidence/` JSON files and printed to stdout. A custom report path must remain under that directory:
 
 ```sh
-node scripts/run-h1-acceptance.mjs --quick \
+npm run judge:acceptance:quick -- \
   --output .scopeledger-local/evidence/judge-quick.json
 ```
 
@@ -91,7 +91,7 @@ npm run check:paypal-config
 npm run check:paypal-auth
 ```
 
-The following is an explicit manual sandbox financial-effect exercise and is not part of H1 automated judging:
+The following is an optional manual sandbox financial-effect exercise and is not part of automated judging:
 
 ```sh
 npm run paypal:sandbox:create
@@ -109,7 +109,7 @@ npm run ip02:status
 npm run ip02:cleanup
 ```
 
-Do not use live credentials. Do not register a webhook ID until a controlled HTTPS sandbox endpoint exists.
+Do not use live credentials. Live webhook registration is not required for the local judging path.
 
 ### Gemini
 
@@ -135,14 +135,22 @@ npm run dev:db:stop
 
 The PostgreSQL data volume is intentionally retained. After preserving any desired report, ignored `.scopeledger-local/`, `.env.local`, and the generated `apps/web/.env.local` link may be removed.
 
+## Not required for local judging
+
+- VoiceOver/NVDA or formal WCAG conformance evidence.
+- Temporary or persistent public webhook registration.
+- Actual PayPal refund or reversal execution.
+
+The codebase includes automated keyboard/reflow checks, webhook tooling, and contract-tested refund/reversal handling. Those foundations remain available for later release and production-readiness work, but the judging submission must not claim the manual evidence was completed.
+
 ## Known boundaries
 
-- Local H1 evidence is not production certification.
+- Local judging evidence is not production certification.
 - Automated acceptance uses provider contract fakes, not real PayPal/Auth0/Gemini operations.
-- Refund creation is unavailable; exception handling uses authenticated read/reconciliation contracts.
+- Actual provider refund/reversal evidence is not claimed; exception handling uses authenticated read/reconciliation contracts.
 - Email is local Mailpit only.
 - Browser acceptance disables Auth0 and the demo database and uses synthetic fixtures.
-- Stable deployed webhook ingress, high availability, backup/restore proof, production retention, and legal or semantic suitability remain unavailable.
+- Formal accessibility conformance, stable deployed webhook ingress, high availability, backup/restore proof, production retention, and legal or semantic suitability remain unavailable.
 
 ## Troubleshooting
 

@@ -30,4 +30,4 @@ The observation-reference regressions inject explicitly named **local adapter-co
 
 See `acceptance.json` for the sanitized observed run. All proof cases must pass; a missing/failed case is not an implicit waiver.
 
-This evidence establishes the initial PostgreSQL/domain protocol under the declared local synthetic process-failure profile. It does **not** prove actual PayPal writes/postback verification, identity/MFA, provider cancellation/key retention, create-only retirement, financial audit operations, R1 backup reopening/HA, lawful retention/erasure, public access, production permission or H1 completion. Keep those gates explicit.
+This evidence establishes the initial PostgreSQL/domain protocol under the declared local synthetic process-failure profile. It does **not** prove actual PayPal writes/postback verification, identity/MFA, provider cancellation/key retention, create-only retirement, financial audit operations, Full Release backup reopening/HA, lawful retention/erasure, public access, production permission or Judging Release completion. Keep those gates explicit.

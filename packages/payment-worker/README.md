@@ -16,7 +16,7 @@ deployment scheduler. Scheduling remains an external cron concern.
 
 `PayPalCaptureReconciler` is the bounded reconciliation exception: it re-fetches a capture from PayPal, resolves the one admitted capture operation by the provider Order ID, reconstructs the exact observation and lets the domain reducer apply idempotency/mismatch rules. It never trusts a webhook status as the financial fact.
 
-`PayPalFinancialAuditor` adds the read-only H1 audit boundary. It selects
+`PayPalFinancialAuditor` adds the read-only Judging Release audit boundary. It selects
 active admitted capture operations in deterministic keyset pages, re-fetches
 the exact known capture or original Order, and sends only normalized
 observations through the existing reducer. It never dispatches capture,
