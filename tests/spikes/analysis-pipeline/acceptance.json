@@ -1,0 +1,39 @@
+{
+  "task": "IP-04-integrated-partial",
+  "profile": "synthetic-pdf-to-authenticated-gemini",
+  "observedDate": "2026-11-12",
+  "result": {
+    "pdfPages": 2,
+    "extractedCodePoints": 153,
+    "sourceImmutable": true,
+    "model": "gemini-3.5-flash-lite",
+    "authenticatedModelCall": true,
+    "claims": 1,
+    "supportingPointers": 1,
+    "chargeWeakeningPointers": 1,
+    "publicationEligibility": "blocked",
+    "humanReviewRequired": true,
+    "usage": {
+      "promptTokens": 375,
+      "candidateTokens": 264,
+      "totalTokens": 639
+    }
+  },
+  "evidence": [
+    "A synthetic two-page PDF was parsed in the bounded child process",
+    "Parser output sealed into an immutable source record with explicit permissions",
+    "Only locally admitted source text was dispatched to Gemini",
+    "Gemini selected host-provided exact spans for both supporting and charge-weakening evidence",
+    "ScopeLedger reconstructed and validated exact Unicode pointers",
+    "The result remained publication-blocked and human-review-required"
+  ],
+  "notProved": [
+    "Human semantic correctness scoring",
+    "Repeated-run variance",
+    "Host-level parser network denial",
+    "Malicious or image-only PDF handling",
+    "Real private-document processing permission",
+    "Production latency, quota, cost or reliability"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

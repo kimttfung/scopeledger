@@ -172,6 +172,8 @@ The selected model is `gemini-3.5-flash-lite`. Never expose the auth key to the 
 
 An authenticated four-class synthetic scorecard now covers included work, genuine additions, missing-context correction and unresolved ambiguity. All four outputs passed strict local schema/evidence reconstruction and remained human-review-required and publication-blocked. The sanitized [partial acceptance manifest](tests/spikes/gemini/acceptance.json) is mechanical evidence only; human semantic scoring and repeat-run stability remain outstanding.
 
+The integrated `npm run analysis:golden` proof now generates a synthetic PDF, extracts it in the bounded parser child, seals immutable source provenance/permissions, calls authenticated Gemini and validates balanced exact evidence. Its [acceptance manifest](tests/spikes/analysis-pipeline/acceptance.json) records one supporting and one charge-weakening pointer with publication still blocked.
+
 **IP-04/SP-06 are not complete.** PDF signature inspection and bounded child-process text extraction now exist, and authenticated Gemini calls have mechanical scorecard evidence. Stronger parser egress isolation, hostile-PDF evaluation, image-only OCR, human semantic scoring, repeat-run variance and approved real-document processing terms remain unproved. No fabricated provider results are included.
 
 Package and spike documentation records the public implementation boundaries and observed evidence. Private product-planning records are intentionally excluded from the repository for now.
