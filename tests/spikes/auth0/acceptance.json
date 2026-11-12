@@ -1,0 +1,31 @@
+{
+  "task": "IP-03-partial",
+  "profile": "authenticated-auth0-provider-session",
+  "observedDate": "2026-11-12",
+  "provider": "auth0",
+  "result": {
+    "oidcCallbackCompleted": true,
+    "verifiedEmailClaimPresent": true,
+    "mfaChallengeCompleted": true,
+    "namespacedMfaClaimPersisted": true,
+    "protectedProviderRouteGranted": true,
+    "authenticationConfersProductGrant": false
+  },
+  "evidence": [
+    "Unconfigured provider access failed closed",
+    "Auth0 Universal Login returned through the configured callback",
+    "A Post-Login Action enforced OTP and set a namespaced MFA claim",
+    "Auth0 SDK beforeSessionSaved copied only approved assurance claims from the verified ID token",
+    "The provider page required verified email and MFA assurance",
+    "The verified page stated that server-side product grants remain required"
+  ],
+  "notProved": [
+    "Password reset and account recovery completion",
+    "Revocation and logout propagation across multiple browsers",
+    "Cross-user SSR, prefetch and cache isolation",
+    "Client approver or payer scoped email verification",
+    "Transactional email delivery",
+    "Production tenant, custom domain, legal or retention approval"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

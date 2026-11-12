@@ -189,7 +189,7 @@ Auth0 is the selected provider/staff identity boundary. It supplies OIDC login, 
 
 Without Auth0 configuration, `/provider` fails closed with an unavailable state while the synthetic client-review page remains usable. Once configured, provider access requires both verified email and an MFA method/ACR claim; authentication alone does not grant product permissions.
 
-If the tenant does not emit a standard `amr`/`acr` MFA claim, add a Post-Login Action that sets the namespaced ID-token claim `https://github.com/kimttfung/scopeledger/claims/mfa` from `event.authentication.methods`. ScopeLedger accepts that boolean claim only when Auth0 set it during the authenticated transaction.
+If the tenant does not emit a standard `amr`/`acr` MFA claim, add a Post-Login Action that enforces the OTP challenge and sets the namespaced ID-token claim `https://github.com/kimttfung/scopeledger/claims/mfa`. Auth0 SDK v4 filters custom claims by default, so ScopeLedger's `beforeSessionSaved` hook copies only `amr`, `acr` and that boolean claim from the already verified ID token into the encrypted session.
 
 ```sh
 # Fill the Auth0 values in .env.local.
@@ -203,5 +203,7 @@ For local development, configure Auth0 with:
 - Allowed Callback URL: `http://127.0.0.1:3000/auth/callback`
 - Allowed Logout URL: `http://127.0.0.1:3000`
 - Allowed Web Origin: `http://127.0.0.1:3000`
+
+An authenticated sandbox login has completed through Universal Login, OTP and the protected provider route. The SDK session hook persisted only the approved assurance claims, and the page continued to separate authenticated identity from server-side product grants. The sanitized [partial acceptance manifest](tests/spikes/auth0/acceptance.json) omits all identity values, tokens and credentials.
 
 Private planning records remain the authority for unreleased product policy. This public UI and its local proofs do not establish production readiness or launch permission.

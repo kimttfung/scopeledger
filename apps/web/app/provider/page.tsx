@@ -95,6 +95,9 @@ export default async function ProviderPage() {
           <li>
             MFA assurance claim: {assurance.mfaVerified ? "present" : "missing"}
           </li>
+          <li>
+            ScopeLedger custom MFA claim: {assurance.customMfaClaim}
+          </li>
         </ul>
         <p>
           <a href="/auth/logout">Sign out of this provider session</a>
@@ -109,8 +112,8 @@ export default async function ProviderPage() {
       status="Authenticated provider access"
     >
       <p>
-        Signed in as {assurance.email ?? assurance.subject}. MFA and verified
-        email assurance are present. Product permissions still require current
+        Signed in with a verified provider identity. MFA and verified email
+        assurance are present. Product permissions still require current
         server-side grants; authentication alone grants no commercial authority.
       </p>
       <p>

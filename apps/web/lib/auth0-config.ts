@@ -16,6 +16,12 @@ export type Auth0EnvironmentState =
 export function readAuth0Environment(
   environment: NodeJS.ProcessEnv = process.env,
 ): Auth0EnvironmentState {
+  if (environment.SCOPELEDGER_AUTH0_DISABLED === "1") {
+    return Object.freeze({
+      configured: false,
+      missing: Object.freeze(["SCOPELEDGER_AUTH0_DISABLED"]),
+    });
+  }
   const required = {
     AUTH0_DOMAIN: environment.AUTH0_DOMAIN,
     AUTH0_CLIENT_ID: environment.AUTH0_CLIENT_ID,

@@ -4,6 +4,7 @@ import {
   MFA_ACR_VALUE,
   MFA_CUSTOM_CLAIM,
   providerAssurance,
+  withProviderAssuranceClaims,
 } from "../../../apps/web/lib/provider-session.js";
 import {
   readAuth0Environment,
@@ -15,6 +16,7 @@ test("provider assurance fails closed without verified email and MFA claims", ()
     email: null,
     emailVerified: false,
     mfaVerified: false,
+    customMfaClaim: "missing",
   });
   assert.equal(providerAssurance({
     sub: "auth0|provider",
@@ -35,14 +37,23 @@ test("provider assurance accepts standard MFA method or ACR claims", () => {
     email_verified: true,
     acr: MFA_ACR_VALUE,
   }).mfaVerified, true);
-  assert.equal(providerAssurance({
+  const custom = providerAssurance({
     sub: "auth0|provider",
     email_verified: true,
     [MFA_CUSTOM_CLAIM]: true,
-  }).mfaVerified, true);
+  });
+  assert.equal(custom.mfaVerified, true);
+  assert.equal(custom.customMfaClaim, "present-true");
 });
 
 test("Auth0 environment is optional for the public synthetic profile and strict when present", () => {
+  assert.deepEqual(readAuth0Environment({
+    SCOPELEDGER_AUTH0_DISABLED: "1",
+    AUTH0_DOMAIN: "tenant.us.auth0.com",
+  }), {
+    configured: false,
+    missing: ["SCOPELEDGER_AUTH0_DISABLED"],
+  });
   assert.deepEqual(readAuth0Environment({}), {
     configured: false,
     missing: [
@@ -52,6 +63,29 @@ test("Auth0 environment is optional for the public synthetic profile and strict 
       "AUTH0_SECRET",
       "APP_BASE_URL",
     ],
+  });
+
+  test("session persistence copies only MFA assurance claims from the verified ID token", () => {
+    const user = withProviderAssuranceClaims(
+      {
+        sub: "auth0|provider",
+        email: "provider@example.test",
+        email_verified: true,
+      },
+      {
+        amr: ["pwd", "mfa"],
+        acr: MFA_ACR_VALUE,
+        [MFA_CUSTOM_CLAIM]: true,
+        "https://example.test/untrusted-extra": "must-not-be-copied",
+      },
+    );
+    assert.deepEqual(user.amr, ["pwd", "mfa"]);
+    assert.equal(user.acr, MFA_ACR_VALUE);
+    assert.equal(user[MFA_CUSTOM_CLAIM], true);
+    assert.equal(
+      "https://example.test/untrusted-extra" in user,
+      false,
+    );
   });
   const configured = readAuth0Environment({
     AUTH0_DOMAIN: "tenant.us.auth0.com",

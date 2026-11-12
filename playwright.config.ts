@@ -15,6 +15,10 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- --port 3210",
     url: "http://127.0.0.1:3210",
+    env: {
+      ...process.env,
+      SCOPELEDGER_AUTH0_DISABLED: "1",
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
