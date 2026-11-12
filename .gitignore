@@ -1,0 +1,16 @@
+/guides/
+.DS_Store
+/PRODUCT.md
+/DECISIONS.md
+/DESIGN.md
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env*
+!.env.example
+test-results/
+playwright-report/
+packages/*/dist/
+packages/adapters/*/dist/
+.paypal-sandbox/

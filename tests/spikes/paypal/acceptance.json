@@ -1,0 +1,40 @@
+{
+  "task": "IP-02-partial",
+  "profile": "actual-paypal-sandbox-adapter-diagnostic",
+  "observedDate": "2026-11-11",
+  "environment": "sandbox",
+  "flow": "create-buyer-approve-capture-retrieve",
+  "result": {
+    "freshFlowsRequired": 2,
+    "freshFlowsCompleted": 2,
+    "durableOrderedConsentFlowsCompleted": 1,
+    "currency": "USD",
+    "gross": "1.00",
+    "captureOutcome": "COMPLETED",
+    "merchantMatchedConfiguredAccount": true,
+    "domainReadiness": "ready"
+  },
+  "evidence": [
+    "Merchant REST app OAuth authentication succeeded",
+    "Two fresh Order creations returned validated PayPal sandbox approval URLs",
+    "A Personal sandbox buyer explicitly approved both Orders",
+    "Both server-side captures completed",
+    "The adapter re-read both provider resources and matched merchant, currency and gross",
+    "PayPal's Return to Merchant action reached the ScopeLedger return route, which preserved server-verification-pending language",
+    "Real CHECKOUT.ORDER.APPROVED and PAYMENT.CAPTURE.COMPLETED sandbox events passed PayPal postback signature verification",
+    "Verified events were normalized and fsynced to duplicate-safe private receipts before HTTP acknowledgment",
+    "An owned real-PostgreSQL run admitted create and capture through durable intent, payer authorization, worker lease and post-commit PayPal transport",
+    "The domain recorded authenticated create/capture observations and derived readiness ready without browser or fixture mutation",
+    "Capture-event reconciliation re-fetches the authoritative provider capture and resolves exactly one admitted capture operation by Order ID",
+    "Refund retrieval validates the fixed PayPal origin and parent-capture link without issuing an automatic refund"
+  ],
+  "notProved": [
+    "Lost create or capture response recovery and endpoint key-retention behavior",
+    "Duplicate, reordered, invalid or unmatched event handling",
+    "Actual sandbox refund retrieval and domain exception reduction",
+    "Same-attempt re-verification after sensitive authorization expiry",
+    "Create-only retirement or production/live permission"
+  ],
+  "providerResourceIdentifiersCommitted": false,
+  "containsCredentialsOrPrivateRecords": false
+}

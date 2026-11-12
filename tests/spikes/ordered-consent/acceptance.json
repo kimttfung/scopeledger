@@ -1,0 +1,56 @@
+{
+  "task": "IP-01",
+  "profile": "local-synthetic-postgresql-and-process-fault-proof",
+  "observedDate": "2026-11-09",
+  "command": "npm run test:ip01",
+  "packages": {
+    "@scopeledger/contracts": "0.1.0",
+    "@scopeledger/db": "0.1.0",
+    "@scopeledger/domain": "0.1.0"
+  },
+  "schemaVersion": "scopeledger.published-unit.v1",
+  "serializationVersion": "scopeledger.canonical-json.v1",
+  "sqlMigration": 1,
+  "tooling": { "node": "26.0.0", "typescript": "6.0.3", "tsx": "4.23.15" },
+  "database": {
+    "engine": "PostgreSQL",
+    "observedVersion": "17.11",
+    "image": "postgres:17@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f",
+    "fsync": "on",
+    "synchronousCommit": "on",
+    "scope": "owned disposable database and one fresh generated schema per database test"
+  },
+  "result": { "tests": 56, "passed": 56, "failed": 0, "skipped": 0, "cancelled": 0 },
+  "inventory": {
+    "canonical.test.ts": 4,
+    "database-safety.test.ts": 3,
+    "protocol.test.ts": 11,
+    "races.test.ts": 19,
+    "payments.test.ts": 13,
+    "crashes.test.ts": 6
+  },
+  "evidence": [
+    "Separate real PostgreSQL connections and observed owned-PID commit barriers for both required orderings",
+    "Immutable canonical bytes/digests and exact money/rationale",
+    "Terminal decision, unresolved-attempt and collection-family SQL constraints",
+    "Missing/reserved target rejection and transaction-local namespace reset prevent URL/pooled search-path redirection into protected schemas",
+    "Current grants, named-approver epochs and separately confirmed payer continuity before protected receipt replay/admission",
+    "Cross-packet unknown impact and new-membership protection",
+    "Atomic identified correction resolution and all 16 independent-hold subsets",
+    "No DB transaction/unit lock retained during delayed synthetic external I/O",
+    "Synthetic observations denied by default and always forbidden for live environments",
+    "Equivalent settled financial meaning retains independently attributed local adapter-contract evidence without a hold or settlement rewrite; genuine changes remain exceptions",
+    "Verified Order identity resolves exactly one already-admitted capture operation for provider re-fetch reconciliation",
+    "Conservative unknown/reconciliation behavior and no fresh permission from stale or replayed leases",
+    "Actual SIGKILL and fresh-process durable readback at all six create/capture intent/admission/result boundaries"
+  ],
+  "notProved": [
+    "Actual PayPal or other provider behavior, writes, authentication or postback verification",
+    "Identity verification, MFA, private web routes or CSRF",
+    "Create-only retirement, remote cancellation or provider idempotency retention",
+    "Paid-amendment resolution or real financial audit scheduling",
+    "R1 older-backup reopening, HA or lawful retention/erasure",
+    "Public access, live processing permission or complete H1/R1 release"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

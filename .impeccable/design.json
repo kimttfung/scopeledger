@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T08:36:35.369Z",
+  "title": "Design System: ScopeLedger",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Cool Canvas",
+        "tonalRamp": ["oklch(15% 0.0017 247.84)", "oklch(25% 0.0017 247.84)", "oklch(35% 0.0017 247.84)", "oklch(45% 0.0017 247.84)", "oklch(55% 0.0017 247.84)", "oklch(65% 0.0017 247.84)", "oklch(80% 0.0017 247.84)", "oklch(95% 0.0017 247.84)"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Studio White",
+        "tonalRamp": ["oklch(15% 0.0000 0.00)", "oklch(25% 0.0000 0.00)", "oklch(35% 0.0000 0.00)", "oklch(45% 0.0000 0.00)", "oklch(55% 0.0000 0.00)", "oklch(65% 0.0000 0.00)", "oklch(80% 0.0000 0.00)", "oklch(95% 0.0000 0.00)"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "tonalRamp": ["oklch(15% 0.0180 255.71)", "oklch(25% 0.0180 255.71)", "oklch(35% 0.0180 255.71)", "oklch(45% 0.0180 255.71)", "oklch(55% 0.0180 255.71)", "oklch(65% 0.0180 255.71)", "oklch(80% 0.0180 255.71)", "oklch(95% 0.0180 255.71)"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "tonalRamp": ["oklch(15% 0.0416 253.67)", "oklch(25% 0.0416 253.67)", "oklch(35% 0.0416 253.67)", "oklch(45% 0.0416 253.67)", "oklch(55% 0.0416 253.67)", "oklch(65% 0.0416 253.67)", "oklch(80% 0.0416 253.67)", "oklch(95% 0.0416 253.67)"]
+      },
+      "cobalt": {
+        "role": "primary",
+        "displayName": "Cobalt",
+        "tonalRamp": ["oklch(15% 0.2354 265.72)", "oklch(25% 0.2354 265.72)", "oklch(35% 0.2354 265.72)", "oklch(45% 0.2354 265.72)", "oklch(55% 0.2354 265.72)", "oklch(65% 0.2354 265.72)", "oklch(80% 0.2354 265.72)", "oklch(95% 0.2354 265.72)"]
+      },
+      "cobalt-deep": {
+        "role": "primary",
+        "displayName": "Deep Cobalt",
+        "tonalRamp": ["oklch(15% 0.2032 265.55)", "oklch(25% 0.2032 265.55)", "oklch(35% 0.2032 265.55)", "oklch(45% 0.2032 265.55)", "oklch(55% 0.2032 265.55)", "oklch(65% 0.2032 265.55)", "oklch(80% 0.2032 265.55)", "oklch(95% 0.2032 265.55)"]
+      },
+      "tint": {
+        "role": "neutral",
+        "displayName": "Cool Tint",
+        "tonalRamp": ["oklch(15% 0.0091 258.34)", "oklch(25% 0.0091 258.34)", "oklch(35% 0.0091 258.34)", "oklch(45% 0.0091 258.34)", "oklch(55% 0.0091 258.34)", "oklch(65% 0.0091 258.34)", "oklch(80% 0.0091 258.34)", "oklch(95% 0.0091 258.34)"]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Fine Rule",
+        "tonalRamp": ["oklch(15% 0.0173 256.28)", "oklch(25% 0.0173 256.28)", "oklch(35% 0.0173 256.28)", "oklch(45% 0.0173 256.28)", "oklch(55% 0.0173 256.28)", "oklch(65% 0.0173 256.28)", "oklch(80% 0.0173 256.28)", "oklch(95% 0.0173 256.28)"]
+      },
+      "control": {
+        "role": "neutral",
+        "displayName": "Control Slate",
+        "tonalRamp": ["oklch(15% 0.0471 255.99)", "oklch(25% 0.0471 255.99)", "oklch(35% 0.0471 255.99)", "oklch(45% 0.0471 255.99)", "oklch(55% 0.0471 255.99)", "oklch(65% 0.0471 255.99)", "oklch(80% 0.0471 255.99)", "oklch(95% 0.0471 255.99)"]
+      },
+      "error": {
+        "role": "error",
+        "displayName": "Error Red",
+        "tonalRamp": ["oklch(15% 0.1628 20.44)", "oklch(25% 0.1628 20.44)", "oklch(35% 0.1628 20.44)", "oklch(45% 0.1628 20.44)", "oklch(55% 0.1628 20.44)", "oklch(65% 0.1628 20.44)", "oklch(80% 0.1628 20.44)", "oklch(95% 0.1628 20.44)"]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Main page title; smaller at the two structural breakpoints." },
+      "title": { "displayName": "Title", "purpose": "Unit title with slightly tightened tracking." },
+      "section": { "displayName": "Section", "purpose": "Indexed review-section bands." },
+      "body": { "displayName": "Body", "purpose": "Default reading text." },
+      "supporting": { "displayName": "Supporting", "purpose": "Scope, terms, evidence, and acknowledgment detail." },
+      "label": { "displayName": "Label", "purpose": "Navigation, compact descriptions, and secondary actions." },
+      "caption": { "displayName": "Caption", "purpose": "Attribution, explanatory notes, and informational chips." },
+      "button": { "displayName": "Button", "purpose": "Outlined action and equal-weight decision labels." },
+      "text-action": { "displayName": "Text Action", "purpose": "Borderless source, history, question, and print controls." },
+      "field": { "displayName": "Field", "purpose": "Readable textarea content without a smaller mobile input size." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "button-state-duration", "value": "150ms", "purpose": "Background-color and border-color transitions on buttons." },
+      { "name": "button-state-easing", "value": "ease-out", "purpose": "Easing for button state transitions; no movement is added." },
+      { "name": "reduced-motion-duration", "value": "0s", "purpose": "Under prefers-reduced-motion: reduce, transition durations become zero and scroll-behavior becomes auto." }
+    ],
+    "breakpoints": [
+      { "name": "max-width-760", "value": "760px" },
+      { "name": "max-width-480", "value": "480px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Outlined Decision Buttons",
+      "kind": "button",
+      "refersTo": "decision-button",
+      "description": "Equal-weight opposing choices; the disabled styling applies to both when acknowledgments are incomplete.",
+      "html": "<div class=\"ds-decision-actions\"><button class=\"ds-decision-button\" type=\"button\">Resolve concern and approve these terms</button><button class=\"ds-decision-button\" type=\"button\">Resolve concern and decline this offer</button></div>",
+      "css": ".ds-decision-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } .ds-decision-button { display: inline-flex; align-items: center; justify-content: center; min-height: 60px; padding: 13px 28px; border: 1px solid var(--color-cobalt, #244ee8); border-radius: var(--radius-control, 4px); background: var(--color-surface, #ffffff); color: var(--color-cobalt, #244ee8); font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); font-size: 14px; font-weight: 500; line-height: 1.55; text-align: center; text-wrap: balance; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out; } .ds-decision-button:hover:not(:disabled) { background: var(--color-tint, #f0f4fa); border-color: var(--color-cobalt-deep, #1739b9); color: var(--color-cobalt-deep, #1739b9); } .ds-decision-button:active:not(:disabled) { background: #e5ecff; } .ds-decision-button:focus-visible { outline: 3px solid var(--color-cobalt, #244ee8); outline-offset: 4px; } .ds-decision-button:disabled { color: var(--color-muted, #52647a); border-color: var(--color-control, #7488a3); background: var(--color-canvas, #fafbfc); cursor: not-allowed; } @media (max-width: 760px) { .ds-decision-actions { gap: var(--space-3, 12px); } .ds-decision-button { padding-inline: 15px; } } @media (max-width: 480px) { .ds-decision-actions { grid-template-columns: 1fr; } } @media (prefers-reduced-motion: reduce) { .ds-decision-button { transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "Text Action",
+      "kind": "button",
+      "refersTo": "text-action",
+      "description": "A quiet source or history action with deep-cobalt color and an underline revealed on hover or press.",
+      "html": "<button class=\"ds-text-action\" type=\"button\">View source context <span aria-hidden=\"true\">&rarr;</span></button>",
+      "css": ".ds-text-action { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; gap: var(--space-2, 8px); padding: 8px 0; border: 0; background: transparent; color: var(--color-cobalt, #244ee8); font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); font-size: 13px; font-weight: 400; line-height: 1.55; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out; } .ds-text-action:hover, .ds-text-action:active { color: var(--color-cobalt-deep, #1739b9); text-decoration-color: currentColor; } .ds-text-action:focus-visible { outline: 3px solid var(--color-cobalt, #244ee8); outline-offset: 4px; } .ds-text-action:disabled { cursor: not-allowed; } @media (prefers-reduced-motion: reduce) { .ds-text-action { transition-duration: 0s !important; scroll-behavior: auto !important; } }"
+    },
+    {
+      "name": "Message Textarea",
+      "kind": "input",
+      "refersTo": "textarea",
+      "description": "The implemented invalid field state, with associated error and helper text; focus remains cobalt.",
+      "html": "<div class=\"ds-message-field\"><label class=\"ds-field-label\" for=\"ds-client-message\">Your question</label><textarea class=\"ds-message-input\" id=\"ds-client-message\" name=\"message\" autocomplete=\"off\" rows=\"4\" aria-invalid=\"true\" aria-describedby=\"ds-message-error ds-draft-note\"></textarea><p class=\"ds-field-error\" id=\"ds-message-error\" role=\"alert\">Add a question or describe the missing context before previewing.</p><p class=\"ds-field-help\" id=\"ds-draft-note\">0 / 10,000 characters, counted as Unicode code points. Use synthetic text only.</p></div>",
+      "css": ".ds-message-field { color: var(--color-ink, #171d25); font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); line-height: 1.65; } .ds-field-label { display: block; margin: 0 0 7px; font-size: 14px; font-weight: 500; } .ds-message-input { display: block; resize: vertical; width: 100%; min-height: 80px; border: 1px solid var(--color-control, #7488a3); border-radius: var(--radius-control, 4px); padding: var(--space-3, 12px); color: var(--color-ink, #171d25); background: var(--color-surface, #ffffff); font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); font-size: 16px; font-weight: 400; line-height: 1.65; } .ds-message-input[aria-invalid=\"true\"] { border-color: var(--color-error, #a22231); } .ds-message-input:focus-visible { outline: 3px solid var(--color-cobalt, #244ee8); outline-offset: 4px; } .ds-field-error { margin: 8px 0 0; color: var(--color-error, #a22231); font-size: 13px; } .ds-field-help { margin: 8px 0 0; color: var(--color-muted, #52647a); font-size: 12px; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Indexed Section Navigation",
+      "kind": "nav",
+      "refersTo": "section-nav",
+      "description": "Meaningful ordered anchors, not a workflow-completion indicator or active-section tracker.",
+      "html": "<nav class=\"ds-section-nav\" aria-label=\"On this page\"><a class=\"ds-section-link\" href=\"#changes\"><span class=\"ds-section-index\" aria-hidden=\"true\">01</span>What changed</a><a class=\"ds-section-link\" href=\"#terms\"><span class=\"ds-section-index\" aria-hidden=\"true\">02</span>Exact terms</a><a class=\"ds-section-link\" href=\"#context\"><span class=\"ds-section-index\" aria-hidden=\"true\">03</span>Why this changed</a><a class=\"ds-section-link\" href=\"#decision\"><span class=\"ds-section-index\" aria-hidden=\"true\">04</span>Your decision</a></nav>",
+      "css": ".ds-section-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4, 16px); border-bottom: 1px solid var(--color-rule, #dce4ef); padding-bottom: 17px; font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); line-height: 1.65; } .ds-section-link { display: flex; align-items: center; gap: 10px; min-width: 44px; min-height: 44px; color: var(--color-muted, #52647a); font-size: 13px; font-weight: 400; text-decoration: none; text-underline-offset: 4px; } .ds-section-index { color: var(--color-cobalt, #244ee8); font-weight: 600; font-variant-numeric: tabular-nums; } .ds-section-link:hover, .ds-section-link:active { color: var(--color-cobalt-deep, #1739b9); text-decoration: underline; } .ds-section-link:focus-visible { outline: 3px solid var(--color-cobalt, #244ee8); outline-offset: 4px; } @media (max-width: 760px) { .ds-section-nav { grid-template-columns: 1fr 1fr; gap: 2px 20px; padding-bottom: 14px; } } @media (max-width: 480px) { .ds-section-link { font-size: 12px; gap: var(--space-2, 8px); } }"
+    },
+    {
+      "name": "Synthetic Chip",
+      "kind": "chip",
+      "refersTo": "synthetic-chip",
+      "description": "An informational prototype label with no selected, hover, or interactive state.",
+      "html": "<span class=\"ds-synthetic-chip\">Synthetic prototype</span>",
+      "css": ".ds-synthetic-chip { padding: 3px 9px; color: var(--color-muted, #52647a); background: var(--color-tint, #f0f4fa); border-radius: 3px; white-space: nowrap; font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); font-size: 12px; font-weight: 400; line-height: 1.65; } @media (max-width: 480px) { .ds-synthetic-chip { font-size: 11px; } }"
+    },
+    {
+      "name": "Included-Work Callout",
+      "kind": "card",
+      "refersTo": "included-work",
+      "description": "A flat informational group with a cobalt glyph, compact heading, and non-interactive list.",
+      "html": "<aside class=\"ds-included-note\" aria-labelledby=\"ds-included-heading\"><svg class=\"ds-info-icon\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7v1\"/></svg><div class=\"ds-included-content\"><h2 class=\"ds-included-heading\" id=\"ds-included-heading\">Included under existing terms</h2><ul class=\"ds-included-list\"><li class=\"ds-included-item\">Mobile menu fix</li><li class=\"ds-included-item\">Reusable case-study layout</li></ul><p class=\"ds-included-help\">These stay part of the existing agreement. Neither requires this additional payment.</p></div></aside>",
+      "css": ".ds-included-note { display: flex; gap: var(--space-4, 16px); padding: 19px 22px; background: var(--color-tint, #f0f4fa); color: var(--color-ink, #171d25); border: 1px solid var(--color-rule, #dce4ef); border-radius: var(--radius-control, 4px); font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif); line-height: 1.65; } .ds-info-icon { width: 21px; height: 21px; flex: 0 0 21px; margin-top: 1px; stroke: var(--color-cobalt, #244ee8); stroke-width: 1.5; } .ds-included-heading { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.35; } .ds-included-list { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 0; padding: 8px 0 0 17px; font-size: 14px; } .ds-included-item { padding-left: 1px; } .ds-included-help { margin: 8px 0 0; max-width: 75ch; color: var(--color-muted, #52647a); font-size: 12px; } @media (max-width: 480px) { .ds-included-note { padding: 17px 15px; gap: 11px; } .ds-included-list { display: block; } .ds-included-item + .ds-included-item { margin-top: 3px; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Studio Standards",
+    "overview": "A light, cool-white studio-specification interface: dark readable system sans, restrained cobalt, crisp fine rules, and flat tonal layering. Precision comes from aligned information, meaningful indices, and familiar controls rather than decorative display type or financial-dashboard styling.\n\nThe voice is neutral and non-adversarial. Separate current information from historical context, make attribution readable, and give opposing decisions equal visual weight. This record describes the built synthetic client-review interface, not production completeness, financial permissions, or established accessibility conformance.",
+    "keyCharacteristics": [
+      "Cool-white surfaces with ink text and restrained cobalt.",
+      "Fine rules, compact indices, and tabular amounts.",
+      "Flat tonal layering and gently squared controls.",
+      "Familiar native interactions and explicit preview staging.",
+      "Equal-weight decisions without conversion pressure."
+    ],
+    "rules": [
+      {
+        "name": "The Restrained Accent Rule",
+        "body": "Use cobalt to identify actions, focus, and meaningful indices; do not turn an approval into a filled brand-primary button.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat Material Rule",
+        "body": "Establish hierarchy with tone, rules, and spacing, not decorative elevation.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** retain the system UI stack, ink text, and cool-white material.",
+      "**Do** use fine rules, aligned labels, and tabular amounts to make comparisons readable.",
+      "**Do** keep opposing decisions equal in weight, size, and availability.",
+      "**Do** preserve visible focus, native controls, and the reduced-motion override.",
+      "**Do** maintain at least 44px by 44px hit areas for standalone controls and checkbox labels, without overlapping neighboring targets.",
+      "**Do** distinguish current information, attributed evidence, history, and local previews."
+    ],
+    "donts": [
+      "**Don't** introduce display fonts, gradients, decorative shadows, or filled approval primaries.",
+      "**Don't** turn informational chips or included-work items into selectable controls.",
+      "**Don't** use color alone to communicate status, error, or authority.",
+      "**Don't** treat generated tonal ramps or one-off measurements as an implemented scale.",
+      "**Don't** present synthetic previews as recorded outcomes or claim accessibility conformance."
+    ]
+  }
+}

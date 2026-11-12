@@ -1,0 +1,20 @@
+{
+  "name": "@scopeledger/payment-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@scopeledger/contracts": "0.1.0",
+    "@scopeledger/domain": "0.1.0",
+    "@scopeledger/paypal-adapter": "0.1.0"
+  }
+}
