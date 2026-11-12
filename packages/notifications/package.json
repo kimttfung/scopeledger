@@ -1,0 +1,19 @@
+{
+  "name": "@scopeledger/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@scopeledger/db": "0.1.0",
+    "@scopeledger/email-adapter": "0.1.0"
+  }
+}

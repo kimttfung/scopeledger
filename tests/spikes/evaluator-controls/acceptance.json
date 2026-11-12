@@ -1,0 +1,22 @@
+{
+  "task": "h1-evaluator-controls",
+  "profile": "local-synthetic-postgresql",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:evaluator-controls",
+  "result": { "tests": 7, "passed": 7, "failed": 0 },
+  "proved": [
+    "PostgreSQL advisory-lock admission enforces concurrent exact limits",
+    "Three analysis runs per provider subject/project",
+    "Five uploads and 25 MB per project per 60-minute window",
+    "Two Gemini calls per provider subject/project",
+    "Browser cannot set, increase or reset limits",
+    "Budget exhaustion persists parser/manual fallback without model authority",
+    "Project and subject isolation with no commercial side effects"
+  ],
+  "notProved": [
+    "Production spend metering against provider billing",
+    "Distributed multi-region admission",
+    "Public evaluator abuse resistance"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

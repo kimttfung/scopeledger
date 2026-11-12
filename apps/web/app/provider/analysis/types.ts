@@ -57,7 +57,11 @@ export type AnalysisModelSummary =
   }>
   | Readonly<{
     status: "failed";
-    code: "MODEL_INPUT_NOT_ADMITTED" | "MODEL_CONFIGURATION_UNAVAILABLE" | "MODEL_PROCESSING_FAILED";
+    code:
+      | "MODEL_INPUT_NOT_ADMITTED"
+      | "MODEL_CONFIGURATION_UNAVAILABLE"
+      | "MODEL_PROCESSING_FAILED"
+      | "MODEL_BUDGET_EXHAUSTED";
     humanReviewRequired: true;
     publicationBlocked: true;
     candidates: readonly [];
@@ -135,6 +139,16 @@ export type AnalysisResponse =
 export type AnalysisRunsResponse = Readonly<{
   ok: true;
   runs: readonly StoredAnalysisRun[];
+  limits: Readonly<{
+    maximumRuns: number;
+    admittedRuns: number;
+    remainingRuns: number;
+    modelCallBudget: number;
+    admittedModelCalls: number;
+    remainingModelCalls: number;
+    blocked: boolean;
+    modelBlocked: boolean;
+  }>;
 }> | Readonly<{
   ok: false;
   code: string;

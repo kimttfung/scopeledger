@@ -23,6 +23,16 @@ const fixedTime = new Date("2026-11-12T10:00:00.000Z");
 const subjectDigest = "d".repeat(64);
 const text = "Exact persisted Unicode 😀 source.";
 const bytes = new TextEncoder().encode(text);
+const analysisLimits = Object.freeze({
+  maximumRuns: 3,
+  admittedRuns: 0,
+  remainingRuns: 3,
+  modelCallBudget: 2,
+  admittedModelCalls: 0,
+  remainingModelCalls: 2,
+  blocked: false,
+  modelBlocked: false,
+});
 
 function databaseUrl(): string {
   const value = process.env.IP01_DATABASE_URL
@@ -247,6 +257,11 @@ test("migration 003 stores, reloads, and appends review for the exact admitted s
     appendReview: (input) => store.appendReview({
       ...ANALYSIS_DEMO_SCOPE,
       ...input,
+    }),
+    readAnalysisLimits: async () => analysisLimits,
+    admitAnalysis: async (_input, work) => work({
+      modelDispatchAllowed: true,
+      state: analysisLimits,
     }),
     modelReference: () => null,
     newRunId: randomUUID,

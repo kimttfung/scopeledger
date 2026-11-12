@@ -150,6 +150,11 @@ export default async function ProviderPage() {
         </Link>
       </p>
       <p>
+        <Link href="/provider/financial-audit">
+          Open financial audit health
+        </Link>
+      </p>
+      <p>
         <a href="/auth/logout">Sign out</a>
       </p>
     </ProviderShell>

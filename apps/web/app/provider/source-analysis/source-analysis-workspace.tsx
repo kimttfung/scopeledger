@@ -417,6 +417,23 @@ export default function SourceAnalysisWorkspace() {
             </dl>
           )}
 
+          {project && (
+            <div className={styles.limitState} role="status">
+              <strong>
+                {project.controls.blocked
+                  ? "Analysis admission limit reached"
+                  : `${project.controls.remainingRuns} of ${project.controls.maximumRuns} analysis runs remain`}
+              </strong>
+              <span>
+                {project.controls.modelBlocked
+                  ? "Gemini dispatch is blocked. Parser/manual review remains available while an analysis slot remains."
+                  : `${project.controls.remainingModelCalls} Gemini dispatch${
+                    project.controls.remainingModelCalls === 1 ? "" : "es"
+                  } remain for this provider and project.`}
+              </span>
+            </div>
+          )}
+
           <fieldset>
             <legend>Analysis route</legend>
             <label className={styles.radio}>
@@ -448,10 +465,16 @@ export default function SourceAnalysisWorkspace() {
 
           <button
             className="button"
-            disabled={busy || !source}
+            disabled={busy || !source || project?.controls.blocked === true}
             type="submit"
           >
-            {busy ? "Analyzing exact source…" : "Run source analysis"}
+            {busy
+              ? "Analyzing exact source…"
+              : project?.controls.blocked
+                ? "Analysis limit reached"
+                : mode === "gemini" && project?.controls.modelBlocked
+                  ? "Save manual fallback"
+                  : "Run source analysis"}
           </button>
         </form>
 

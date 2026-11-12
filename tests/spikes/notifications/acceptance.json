@@ -1,0 +1,23 @@
+{
+  "task": "notification-outbox",
+  "profile": "local-synthetic-postgresql-mailpit",
+  "observedDate": "2026-11-12",
+  "command": "npx tsc --build packages/db packages/adapters/email packages/notifications && node --env-file=.env.local scripts/run-ip01.mjs --suite=notifications",
+  "result": { "tests": 10, "passed": 10, "failed": 0 },
+  "proved": [
+    "Migration 009 installs bounded durable outbox, lease, attempt and receipt records",
+    "Consequential event intents enqueue atomically and deduplicate by scoped purpose and recipient role",
+    "Payload constraints exclude raw text, email addresses, verification codes and provider payment identifiers",
+    "Expired leases, bounded backoff, retry and manual terminal handling are durable",
+    "Current grants, exact versions and collectible obligations are rechecked before dispatch",
+    "Stable message identity recovers captured Mailpit delivery after a worker crash",
+    "Local SMTP remains restricted to reserved scopeledger.test recipients",
+    "Notification outcomes do not mutate agreement, payment, readiness or work-start facts"
+  ],
+  "notProved": [
+    "External email delivery",
+    "Production worker scheduling",
+    "Exactly-once semantics for arbitrary SMTP servers without delivery lookup"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}

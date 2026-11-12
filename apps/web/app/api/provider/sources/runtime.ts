@@ -4,6 +4,11 @@ import {
 } from "@scopeledger/db";
 import { requireSameOrigin } from "../../../../lib/local-access";
 import { protocolDatabase } from "../../../../lib/protocol-database";
+import {
+  evaluatorLimitConfigFromEnvironment,
+  readSourceUploadLimitState,
+  withSourceUploadAdmission,
+} from "../../../../lib/evaluator-limits";
 import { verifiedProvider } from "../../analysis/provider-api";
 import type {
   ProviderSourceDependencies,
@@ -49,6 +54,7 @@ export async function providerSourceDependencies(): Promise<
     throw new Error("Provider source database is not configured");
   }
   const authoring = new PostgresAuthoringStore(database);
+  const limitConfig = evaluatorLimitConfigFromEnvironment();
 
   return {
     requireSameOrigin,
@@ -112,6 +118,23 @@ export async function providerSourceDependencies(): Promise<
     putSourceObject: async (input) =>
       (await providerSourceStorage()).put(input),
     persistSourceIntake: (input) => authoring.recordSourceIntake(input),
+    readSourceLimits: (target) => readSourceUploadLimitState(
+      database,
+      limitConfig,
+      target,
+    ),
+    admitSourceUpload: (input, work) => withSourceUploadAdmission(
+      database,
+      limitConfig,
+      {
+        workspaceId: input.target.workspaceId,
+        projectId: input.target.projectId,
+        sourceId: input.sourceId,
+        sourceVersion: input.sourceVersion,
+        byteLength: input.byteLength,
+      },
+      work,
+    ),
     now: () => new Date(),
   };
 }

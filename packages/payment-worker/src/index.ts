@@ -25,6 +25,9 @@ import {
 
 export * from "./reconciliation-admission.js";
 export * from "./webhook-processor.js";
+export * from "./financial-audit.js";
+export * from "./financial-audit-cli.js";
+export * from "./postgres-financial-audit.js";
 
 export type PaymentWorkerErrorCode =
   | "APPROVAL_LINK_INVALID"

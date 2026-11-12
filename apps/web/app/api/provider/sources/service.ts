@@ -7,6 +7,11 @@ import type {
   PutSourceObjectInput,
   PutSourceObjectResult,
 } from "@scopeledger/object-storage-adapter";
+import type {
+  SourceUploadLimitState,
+} from "../../../../lib/evaluator-limits.js";
+
+export type ProviderSourceLimitState = SourceUploadLimitState;
 
 export const MAX_SOURCE_BYTES = 10_000_000;
 export const MAX_SOURCE_MULTIPART_BYTES = MAX_SOURCE_BYTES + 256_000;
@@ -113,6 +118,18 @@ export type ProviderSourceDependencies = Readonly<{
     duplicate: boolean;
     source: SourceIntakeRecord;
   }>>;
+  readSourceLimits: (
+    target: ProviderSourceTarget,
+  ) => Promise<SourceUploadLimitState>;
+  admitSourceUpload: <T>(
+    input: Readonly<{
+      target: ProviderSourceTarget;
+      sourceId: string;
+      sourceVersion: number;
+      byteLength: number;
+    }>,
+    work: () => Promise<T>,
+  ) => Promise<Readonly<{ value: T; state: SourceUploadLimitState }>>;
   now: () => Date;
 }>;
 
@@ -635,6 +652,35 @@ function persistenceFailure(error: unknown): Response {
   }
 }
 
+function admissionFailure(error: unknown): Response {
+  switch (errorCode(error)) {
+    case "SOURCE_UPLOAD_LIMIT_REACHED":
+      return json({
+        ok: false,
+        code: "SOURCE_UPLOAD_LIMIT_REACHED",
+        message: "This project has reached its bounded source-upload count for the current window.",
+      }, 429);
+    case "SOURCE_UPLOAD_BYTES_LIMIT_REACHED":
+      return json({
+        ok: false,
+        code: "SOURCE_UPLOAD_BYTES_LIMIT_REACHED",
+        message: "This project has reached its bounded source-upload bytes for the current window.",
+      }, 429);
+    case "EVALUATOR_CONFIGURATION_INVALID":
+      return json({
+        ok: false,
+        code: "EVALUATOR_CONFIGURATION_INVALID",
+        message: "Evaluator limits are not safely configured.",
+      }, 503);
+    default:
+      return json({
+        ok: false,
+        code: "SOURCE_INTAKE_UNAVAILABLE",
+        message: "Durable source intake is unavailable.",
+      }, 503);
+  }
+}
+
 async function providerIdentity(
   dependencies: ProviderSourceDependencies,
   action: "listing" | "uploading",
@@ -725,14 +771,21 @@ export async function handleProviderSourcesGet(
   }
 
   try {
-    const sources = await dependencies.listSourceIntake(target);
+    const [sources, limits] = await Promise.all([
+      dependencies.listSourceIntake(target),
+      dependencies.readSourceLimits(target),
+    ]);
     return json({
       ok: true,
       sources: sources
         .filter((source) => source.availability === "available")
         .map(sourceSummary),
+      limits,
     }, 200);
-  } catch {
+  } catch (error) {
+    if (errorCode(error) === "EVALUATOR_CONFIGURATION_INVALID") {
+      return admissionFailure(error);
+    }
     return json({
       ok: false,
       code: "SOURCE_INTAKE_UNAVAILABLE",
@@ -831,47 +884,6 @@ export async function handleProviderSourcePost(
     versionId: identity.versionId,
   };
 
-  let stored: PutSourceObjectResult;
-  try {
-    stored = await dependencies.putSourceObject({
-      bytes,
-      metadata: {
-        binding,
-        browserFilename: submission.file.name,
-        mediaType: submission.file.type,
-      },
-    });
-  } catch (error) {
-    return storageFailure(error);
-  }
-  if (
-    stored.byteLength !== bytes.byteLength
-    || stored.objectId !== `sha256:${contentDigest}`
-    || stored.binding.workspaceId !== binding.workspaceId
-    || stored.binding.projectId !== binding.projectId
-    || stored.binding.sourceId !== binding.sourceId
-    || stored.binding.versionId !== binding.versionId
-  ) {
-    return json({
-      ok: false,
-      code: "SOURCE_STORAGE_CONFLICT",
-      message: "The immutable source binding conflicts with stored data.",
-    }, 409);
-  }
-
-  try {
-    authorization = await dependencies.authorizeTarget(target);
-  } catch {
-    return json({
-      ok: false,
-      code: "SOURCE_SCOPE_UNAVAILABLE",
-      message: "The provider project scope is unavailable.",
-    }, 503);
-  }
-  if (authorization !== "authorized") {
-    return authorizationResponse(authorization);
-  }
-
   const reviewedAt = dependencies.now();
   if (!Number.isFinite(reviewedAt.getTime())) {
     return json({
@@ -893,46 +905,122 @@ export async function handleProviderSourcePost(
         basis: submission.modelReviewBasis,
       };
 
-  let persistence: Awaited<
-    ReturnType<ProviderSourceDependencies["persistSourceIntake"]>
-  >;
+  type AdmissionValue =
+    | Readonly<{ ok: false; response: Response }>
+    | Readonly<{
+      ok: true;
+      persistence: Awaited<
+        ReturnType<ProviderSourceDependencies["persistSourceIntake"]>
+      >;
+    }>;
+  let admission: Readonly<{
+    value: AdmissionValue;
+    state: SourceUploadLimitState;
+  }>;
   try {
-    persistence = await dependencies.persistSourceIntake({
-      workspaceId: target.workspaceId,
-      projectId: target.projectId,
+    admission = await dependencies.admitSourceUpload({
+      target,
       sourceId: identity.sourceId,
-      version: identity.version,
-      availability: "available",
-      reviewedBy: target.providerActorId,
-      sourceKind: "provider-upload",
-      mediaType: submission.file.type,
-      originalName: submission.file.name,
-      declaredByteLength: bytes.byteLength,
-      contentDigest,
-      provenance: {
-        origin: submission.provenanceOrigin,
-        suppliedBy: target.providerActorId,
-        originReference: submission.originReference,
-        acceptance: {
-          kind: "provider-attested-import",
-          basis: submission.acceptanceBasis,
-        },
-      },
-      permissions: {
-        studioSharing: submission.studioSharing,
-        modelProcessing: submission.modelProcessing,
-        modelInputReview,
-      },
+      sourceVersion: identity.version,
+      byteLength: bytes.byteLength,
+    }, async (): Promise<AdmissionValue> => {
+      let stored: PutSourceObjectResult;
+      try {
+        stored = await dependencies.putSourceObject({
+          bytes,
+          metadata: {
+            binding,
+            browserFilename: submission.file.name,
+            mediaType: submission.file.type,
+          },
+        });
+      } catch (error) {
+        return { ok: false, response: storageFailure(error) };
+      }
+      if (
+        stored.byteLength !== bytes.byteLength
+        || stored.objectId !== `sha256:${contentDigest}`
+        || stored.binding.workspaceId !== binding.workspaceId
+        || stored.binding.projectId !== binding.projectId
+        || stored.binding.sourceId !== binding.sourceId
+        || stored.binding.versionId !== binding.versionId
+      ) {
+        return {
+          ok: false,
+          response: json({
+            ok: false,
+            code: "SOURCE_STORAGE_CONFLICT",
+            message: "The immutable source binding conflicts with stored data.",
+          }, 409),
+        };
+      }
+
+      try {
+        authorization = await dependencies.authorizeTarget(target);
+      } catch {
+        return {
+          ok: false,
+          response: json({
+            ok: false,
+            code: "SOURCE_SCOPE_UNAVAILABLE",
+            message: "The provider project scope is unavailable.",
+          }, 503),
+        };
+      }
+      if (authorization !== "authorized") {
+        return {
+          ok: false,
+          response: authorizationResponse(authorization),
+        };
+      }
+
+      try {
+        const persistence = await dependencies.persistSourceIntake({
+          workspaceId: target.workspaceId,
+          projectId: target.projectId,
+          sourceId: identity.sourceId,
+          version: identity.version,
+          availability: "available",
+          reviewedBy: target.providerActorId,
+          sourceKind: "provider-upload",
+          mediaType: submission.file.type,
+          originalName: submission.file.name,
+          declaredByteLength: bytes.byteLength,
+          contentDigest,
+          provenance: {
+            origin: submission.provenanceOrigin,
+            suppliedBy: target.providerActorId,
+            originReference: submission.originReference,
+            acceptance: {
+              kind: "provider-attested-import",
+              basis: submission.acceptanceBasis,
+            },
+          },
+          permissions: {
+            studioSharing: submission.studioSharing,
+            modelProcessing: submission.modelProcessing,
+            modelInputReview,
+          },
+        });
+        return { ok: true, persistence };
+      } catch (error) {
+        return { ok: false, response: persistenceFailure(error) };
+      }
     });
   } catch (error) {
-    return persistenceFailure(error);
+    return admissionFailure(error);
   }
+  if (!admission.value.ok) {
+    return admission.value.response;
+  }
+  const persistence = admission.value.persistence;
 
   return json({
     ok: true,
     admitted: true,
     duplicate: persistence.duplicate,
     source: sourceSummary(persistence.source),
+    limits: admission.state,
     effects: {
       modelDispatch: false,
       parserExecution: false,

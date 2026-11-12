@@ -159,7 +159,7 @@ test("migration 008 upgrades a contiguous 007 history without rewriting prior re
     const versions = (await sql<{ version: number }>`select version
       from schema_migrations order by version`
       .execute(database.kysely)).rows.map((row) => row.version);
-    assert.deepEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const history = (await sql<{
       event: string;
       detail: unknown;

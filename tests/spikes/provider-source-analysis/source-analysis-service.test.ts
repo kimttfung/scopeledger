@@ -33,6 +33,16 @@ import {
 
 const fixedTime = new Date("2026-11-12T08:30:00.000Z");
 const subjectDigest = "a".repeat(64);
+const analysisLimits = Object.freeze({
+  maximumRuns: 3,
+  admittedRuns: 0,
+  remainingRuns: 3,
+  modelCallBudget: 2,
+  admittedModelCalls: 0,
+  remainingModelCalls: 2,
+  blocked: false,
+  modelBlocked: false,
+});
 
 function sha256(value: Uint8Array | string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -300,6 +310,11 @@ function memoryDependencies(
       (target.reviews as AnalysisHumanReviewRecord[]).push(review);
       return { duplicate: false, review };
     },
+    readAnalysisLimits: async () => analysisLimits,
+    admitAnalysis: async (_input, work) => work({
+      modelDispatchAllowed: true,
+      state: analysisLimits,
+    }),
     modelReference: () => "gemini-test",
     newRunId: randomUUID,
     now: () => new Date(fixedTime),

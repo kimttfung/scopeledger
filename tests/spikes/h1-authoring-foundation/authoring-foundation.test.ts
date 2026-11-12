@@ -206,7 +206,7 @@ test("reviewed migrations install fresh and upgrade contiguous earlier histories
   t.after(isolated.dispose);
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const relations = (await sql<{ name: string }>`
     select c.relname as name
     from pg_catalog.pg_class c
@@ -255,7 +255,7 @@ test("reviewed migrations install fresh and upgrade contiguous earlier histories
     await database.migrate();
     assert.deepEqual((await sql<{ version: number }>`
       select version from schema_migrations order by version
-    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const preserved = (await sql<{
       name: string | null;
       title: string | null;

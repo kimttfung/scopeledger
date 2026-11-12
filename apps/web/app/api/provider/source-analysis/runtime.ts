@@ -19,6 +19,11 @@ import {
   providerSourceScopePrefix,
 } from "../sources/service";
 import { providerSourceStorage } from "../sources/storage-runtime";
+import {
+  evaluatorLimitConfigFromEnvironment,
+  readAnalysisLimitState,
+  withAnalysisAdmission,
+} from "../../../../lib/evaluator-limits";
 import type {
   AuthorizedProviderSource,
   PersistedAnalysisSourceDetails,
@@ -183,6 +188,7 @@ export async function providerSourceAnalysisDependencies(): Promise<
 > {
   const current = database();
   const analysis = new PostgresAnalysisStore(current);
+  const limitConfig = evaluatorLimitConfigFromEnvironment();
   let configuredModel: string | null = null;
   return {
     requireSameOrigin,
@@ -227,6 +233,34 @@ export async function providerSourceAnalysisDependencies(): Promise<
       ...ANALYSIS_DEMO_SCOPE,
       ...input,
     }),
+    readAnalysisLimits: (input) => readAnalysisLimitState(
+      current,
+      limitConfig,
+      {
+        logicalWorkspaceId: input.workspaceId,
+        logicalProjectId: input.projectId,
+        persistenceWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        persistenceProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        subjectDigest: input.subjectDigest,
+        sourceVersionMode: "listed",
+        sourceVersionIds: input.sourceVersionIds,
+      },
+    ),
+    admitAnalysis: (input, work) => withAnalysisAdmission(
+      current,
+      limitConfig,
+      {
+        logicalWorkspaceId: input.workspaceId,
+        logicalProjectId: input.projectId,
+        persistenceWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        persistenceProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        subjectDigest: input.subjectDigest,
+        sourceVersionMode: "listed",
+        sourceVersionIds: input.sourceVersionIds,
+        mode: input.mode,
+      },
+      work,
+    ),
     modelReference: () => configuredModel
       ?? (
         typeof process.env.GEMINI_MODEL === "string"

@@ -10,6 +10,7 @@ import { migration005 } from "./migrations/005-commercial-publication.js";
 import { migration006 } from "./migrations/006-provider-baseline-confirmation.js";
 import { migration007 } from "./migrations/007-provider-reconciliation.js";
 import { migration008 } from "./migrations/008-client-review-drafts.js";
+import { migration009 } from "./migrations/009-notification-outbox.js";
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type Json = ColumnType<unknown, string, string>;
@@ -115,6 +116,46 @@ export interface Database {
     created_at: Timestamp;
     updated_at: Timestamp;
     expires_at: Timestamp;
+  };
+  notification_outbox: Scope & {
+    id: string;
+    purpose: string;
+    recipient_role: string;
+    attributed_actor_id: string;
+    source_kind: string;
+    source_key: string;
+    dedupe_key: string;
+    payload: Json;
+    status: Generated<string>;
+    max_attempts: Generated<number>;
+    attempt_count: Generated<number>;
+    available_at: Generated<Date>;
+    enqueued_at: Generated<Date>;
+    lease_token: string | null;
+    lease_owner: string | null;
+    lease_expires_at: Timestamp | null;
+    last_attempt_at: Timestamp | null;
+    last_error_code: string | null;
+    delivered_at: Timestamp | null;
+    terminal_at: Timestamp | null;
+  };
+  notification_delivery_attempts: {
+    notification_id: string;
+    attempt_number: number;
+    lease_token: string;
+    worker_id: string;
+    started_at: Timestamp;
+    completed_at: Timestamp | null;
+    outcome: string | null;
+    error_code: string | null;
+  };
+  notification_delivery_receipts: {
+    notification_id: string;
+    message_id: string;
+    transport: "mailpit";
+    status: "reserved" | "delivered";
+    reserved_at: Timestamp;
+    delivered_at: Timestamp | null;
   };
 }
 export type ProtocolTransaction = Transaction<Database>;
@@ -226,6 +267,7 @@ export class ProtocolDatabase {
         { version: 6, source: migration006 },
         { version: 7, source: migration007 },
         { version: 8, source: migration008 },
+        { version: 9, source: migration009 },
       ] as const;
       if (applied.some((version, index) => version !== index + 1)
           || applied.length > migrations.length) {
@@ -286,6 +328,7 @@ export {
   migration006,
   migration007,
   migration008,
+  migration009,
   sql,
 };
 export * from "./runtime-persistence.js";
@@ -294,3 +337,4 @@ export * from "./authoring-foundation.js";
 export * from "./commercial-publication.js";
 export * from "./provider-baseline.js";
 export * from "./client-review-drafts.js";
+export * from "./notification-persistence.js";

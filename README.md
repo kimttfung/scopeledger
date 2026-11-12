@@ -170,6 +170,22 @@ Migration 007 adds attributed provider question responses and correction applica
 
 Migration 008 adds private project/unit/participant-scoped client drafts with immutable revisions, exact Unicode, model permission, seven-inactive-day expiry and cross-browser recovery. Draft save/delete creates no submission, hold, notification, model call or commercial effect.
 
+Migration 009 adds a durable notification outbox with leases, bounded attempts, delivery receipts, dedupe and safe terminal states. Consequential events enqueue template-safe structured intent before SMTP; dispatch rechecks current grants, versions and collectible obligations so revoked or obsolete notices are suppressed rather than sent.
+
+Prepare and exercise the local H1 operations profile:
+
+```sh
+npm run prepare:h1-operations
+npm run notifications:process
+npm run paypal:financial-audit:status
+npm run paypal:financial-audit
+npm run test:notifications
+npm run test:evaluator-controls
+npm run test:financial-audit
+```
+
+Evaluator limits use PostgreSQL advisory-lock admission and existing persisted source/run counts. The local profile permits three analysis runs, five uploads/25 MB per project per 60 minutes and two Gemini calls; exhaustion returns explicit stable codes and retains parser/manual review rather than fabricating a model result.
+
 The protected `/provider/authoring` workspace has exercised a real synthetic project, request, private text upload, immutable draft revisions, explicit local client-authority activation, baseline confirmation, exact USD 200 payable preparation and publication. The generated opaque review recorded a real exact approval; the provider then separately activated the fixed local payer, and the opaque custom payer flow completed PayPal Sandbox approval/capture and derived `ready`. Work start remains separate and unrecorded.
 
 Prepare the ignored private local object root before source intake:
@@ -234,6 +250,8 @@ Package and spike documentation records the public implementation boundaries and
 - `/provider/reconciliation` records attributed question responses and correction assessments without silently clearing holds. `/provider/source-analysis` analyzes exact admitted PDF/text/Markdown bytes under stored permissions, persists human-review-required runs/reviews, and grants no downstream commercial authority.
 - `/provider/participants` explicitly revokes/restores approver or payer authority under fresh epochs without rewriting history or suppressing admitted recovery. Dynamic client question/correction drafts can be saved, recovered and deleted privately before explicit submission.
 - `/provider/payment-exceptions` treats verified refund/reversal events as triggers for authoritative reads, preserves original capture/agreement facts and withholds readiness through financial holds without recollection or manual overrides.
+- `/provider/financial-audit` reports bounded safe aggregates for known capture freshness and webhook health. The one-shot CLI is suitable for cron, never redispatches capture, and exits nonzero for unresolved operational failure.
+- The notification worker delivers only to configured reserved local Mailpit recipients. Delivery outcomes never change agreement, payment, readiness, work start or correction state.
 - `/provider/operations` keeps readiness and actual work start separate. A verified-email/MFA provider with the current synthetic product grant may record actual start only after the server locks and rechecks readiness and holds; the completed demo remains intentionally `not recorded`.
 - Client message drafts live only in page memory and are lost on refresh before submission. Provider authoring revisions are persisted as immutable server records. Use synthetic text only.
 - Question and source fields each allow 10,000 Unicode code points. Longer input is preserved with a validation error, not silently truncated; previewing is blocked until it is corrected.

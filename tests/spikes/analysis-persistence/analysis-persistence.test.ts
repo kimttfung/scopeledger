@@ -164,7 +164,7 @@ test("migration 003 remains installed when later reviewed migrations apply", asy
   t.after(isolated.dispose);
   assert.deepEqual((await sql<{ version: number }>`
     select version from schema_migrations order by version
-  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+  `.execute(isolated.database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   const relations = (await sql<{ name: string }>`
     select c.relname as name
     from pg_catalog.pg_class c
@@ -206,7 +206,7 @@ test("migration 003 remains installed when later reviewed migrations apply", asy
     await database.migrate();
     assert.deepEqual((await sql<{ version: number }>`
       select version from schema_migrations order by version
-    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+    `.execute(database.kysely)).rows.map((row) => row.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     assert.equal((await sql`select 1 from workspaces
       where id = 'upgrade-workspace'`.execute(database.kysely)).rows.length, 1);
     await database.migrate();
@@ -215,7 +215,7 @@ test("migration 003 remains installed when later reviewed migrations apply", asy
 
 test("migrator rejects gapped, unknown, empty, and unversioned histories", async (t) => {
   const targets = await migrationTargets(t);
-  for (const versions of [[2], [1, 3], [1, 2, 6], [1, 2, 3, 6], [1, 2, 3, 4, 6], [1, 2, 3, 4, 5, 7], [1, 2, 3, 4, 5, 6, 8], [1, 2, 3, 4, 5, 6, 7, 9], [1, 2, 3, 4, 5, 6, 7, 8, 9]]) {
+  for (const versions of [[2], [1, 3], [1, 2, 6], [1, 2, 3, 6], [1, 2, 3, 4, 6], [1, 2, 3, 4, 5, 7], [1, 2, 3, 4, 5, 6, 8], [1, 2, 3, 4, 5, 6, 7, 9], [1, 2, 3, 4, 5, 6, 7, 8, 10], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]) {
     const database = await targets.create();
     await database.transaction(async (transaction) => {
       await sql`create table schema_migrations(

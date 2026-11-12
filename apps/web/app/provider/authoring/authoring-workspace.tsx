@@ -7,6 +7,7 @@ import type {
   AuthoringRequest,
 } from "../../api/provider/authoring/service";
 import type {
+  ProviderSourceLimitState,
   ProviderSourceSummary,
 } from "../../api/provider/sources/service";
 import styles from "./authoring.module.css";
@@ -47,13 +48,17 @@ type DraftCreated = Readonly<{
 type SourceList = Readonly<{
   ok: true;
   sources: readonly ProviderSourceSummary[];
+  limits: ProviderSourceLimitState;
 }>;
 
 type SourceUploaded = Readonly<{
   ok: true;
   duplicate: boolean;
   source: ProviderSourceSummary;
+  limits: ProviderSourceLimitState;
 }>;
+
+const byteFormatter = new Intl.NumberFormat("en-US");
 
 function count(value: string): number {
   return Array.from(value).length;
@@ -124,6 +129,8 @@ export default function AuthoringWorkspace({
   const [requests, setRequests] = useState<readonly AuthoringRequest[]>([]);
   const [drafts, setDrafts] = useState<readonly AuthoringDraft[]>([]);
   const [sources, setSources] = useState<readonly ProviderSourceSummary[]>([]);
+  const [sourceLimits, setSourceLimits] =
+    useState<ProviderSourceLimitState | null>(null);
   const [selectedSourceLocators, setSelectedSourceLocators] = useState<
     readonly string[]
   >([]);
@@ -249,6 +256,7 @@ export default function AuthoringWorkspace({
     );
     const body = await jsonResponse<SourceList>(response);
     setSources(body.sources);
+    setSourceLimits(body.limits);
     const admitted = new Set(body.sources.map((source) => source.locator));
     setSelectedSourceLocators((current) =>
       preserveSelection
@@ -318,6 +326,7 @@ export default function AuthoringWorkspace({
       ]);
       if (!active) return;
       setSources(sourceBody.sources);
+      setSourceLimits(sourceBody.limits);
       setDrafts(draftBody.drafts);
       const selectedUnit = draftBody.drafts.some(
         (draft) => draft.unitId === initialSelection.unitId,
@@ -381,6 +390,7 @@ export default function AuthoringWorkspace({
       setRequests([]);
       setDrafts([]);
       setSources([]);
+      setSourceLimits(null);
       setSelectedSourceLocators([]);
       setUnitId(null);
       resetDraftForm(null);
@@ -402,6 +412,7 @@ export default function AuthoringWorkspace({
     setRequests([]);
     setDrafts([]);
     setSources([]);
+    setSourceLimits(null);
     setSelectedSourceLocators([]);
     setUnitId(null);
     resetDraftForm(null);
@@ -441,6 +452,7 @@ export default function AuthoringWorkspace({
       setRequestTitle("");
       setDrafts([]);
       setSources([]);
+      setSourceLimits(null);
       setSelectedSourceLocators([]);
       setUnitId(null);
       resetDraftForm(null);
@@ -471,6 +483,7 @@ export default function AuthoringWorkspace({
     setRequestId(targetRequestId);
     setDrafts([]);
     setSources([]);
+    setSourceLimits(null);
     setSelectedSourceLocators([]);
     setUnitId(null);
     resetDraftForm(null);
@@ -586,6 +599,7 @@ export default function AuthoringWorkspace({
         body: data,
       });
       const body = await jsonResponse<SourceUploaded>(response);
+      setSourceLimits(body.limits);
       await loadSources(projectId, requestId);
       setSelectedSourceLocators((current) =>
         current.includes(body.source.locator)
@@ -872,6 +886,15 @@ export default function AuthoringWorkspace({
                     It does not run a parser or model, create an agreement, publish,
                     or change payment or work readiness.
                   </span>
+                  {sourceLimits && (
+                    <span role="status">
+                      {sourceLimits.blocked
+                        ? "Source admission is blocked for the current project window."
+                        : `${sourceLimits.remainingCount} source admission${
+                          sourceLimits.remainingCount === 1 ? "" : "s"
+                        } and ${byteFormatter.format(sourceLimits.remainingBytes)} bytes remain in the ${sourceLimits.windowMinutes}-minute window.`}
+                    </span>
+                  )}
                 </div>
 
                 <div className={styles.sourceGrid}>
@@ -1061,9 +1084,14 @@ export default function AuthoringWorkspace({
                           || count(modelReviewBasis.trim()) < 1
                           || count(modelReviewBasis) > 2_000
                           || !modelPermissionMatchesReview
+                          || sourceLimits?.blocked === true
                         }
                       >
-                        {busy ? "Admitting source…" : "Upload and admit source"}
+                        {busy
+                          ? "Admitting source…"
+                          : sourceLimits?.blocked
+                            ? "Source admission limit reached"
+                            : "Upload and admit source"}
                       </button>
                     </div>
                   </form>

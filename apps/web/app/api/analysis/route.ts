@@ -3,10 +3,15 @@ import {
   geminiConfigFromEnvironment,
 } from "@scopeledger/gemini-adapter";
 import {
+  ANALYSIS_DEMO_SCOPE,
   PostgresAnalysisStore,
 } from "@scopeledger/db";
 import { requireSameOrigin } from "../../../lib/local-access";
 import { protocolDatabase } from "../../../lib/protocol-database";
+import {
+  evaluatorLimitConfigFromEnvironment,
+  withAnalysisAdmission,
+} from "../../../lib/evaluator-limits";
 import {
   executeAnalysisUpload,
   responseFailure,
@@ -88,6 +93,16 @@ export async function POST(request: Request): Promise<Response> {
     ));
   }
   const store = new PostgresAnalysisStore(database);
+  let limitConfig: ReturnType<typeof evaluatorLimitConfigFromEnvironment>;
+  try {
+    limitConfig = evaluatorLimitConfigFromEnvironment();
+  } catch {
+    return json(responseFailure(
+      503,
+      "EVALUATOR_CONFIGURATION_INVALID",
+      "Evaluator limits are not safely configured.",
+    ));
+  }
   let configuredModel: string | null = null;
   return json(await executeAnalysisUpload(formValidation.value, {
     extractPdf: analysisParserRuntime.extractPdf,
@@ -96,6 +111,21 @@ export async function POST(request: Request): Promise<Response> {
     persistRun: async (input) => {
       await store.saveRun(input);
     },
+    admitAnalysis: (input, work) => withAnalysisAdmission(
+      database,
+      limitConfig,
+      {
+        logicalWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        logicalProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        persistenceWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        persistenceProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        subjectDigest: provider.subjectDigest,
+        sourceVersionMode: "run-id",
+        sourceVersionIds: [],
+        mode: input.mode,
+      },
+      work,
+    ),
     modelReference: () => configuredModel,
     generateCandidates: async (run) => {
       const config = geminiConfigFromEnvironment();

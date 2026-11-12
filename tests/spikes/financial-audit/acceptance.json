@@ -1,0 +1,23 @@
+{
+  "task": "paypal-financial-audit",
+  "profile": "local-synthetic-paypal-sandbox",
+  "observedDate": "2026-11-12",
+  "command": "npm run test:financial-audit",
+  "result": { "tests": 13, "passed": 13, "failed": 0 },
+  "proved": [
+    "Explicit bounded one-shot audit and dry status modes",
+    "Deterministic known-attempt/capture batches",
+    "Authoritative capture/Order refresh without capture redispatch",
+    "Stale and unknown facts remain unresolved and may withhold readiness",
+    "Verified exception triggers process against known scopes",
+    "Credential/provider failures are safe aggregate counts",
+    "Read-only provider health UI and redacted webhook queue metrics",
+    "Nonzero exit for unresolved operational failure"
+  ],
+  "notProved": [
+    "Scheduled deployed cron execution",
+    "Stable public webhook ingress",
+    "Hosted alert delivery to an accountable operator"
+  ],
+  "containsProviderIdentifiersOrCredentials": false
+}

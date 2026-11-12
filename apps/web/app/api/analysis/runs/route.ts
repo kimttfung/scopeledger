@@ -3,6 +3,10 @@ import {
   PostgresAnalysisStore,
 } from "@scopeledger/db";
 import { protocolDatabase } from "../../../../lib/protocol-database";
+import {
+  evaluatorLimitConfigFromEnvironment,
+  readAnalysisLimitState,
+} from "../../../../lib/evaluator-limits";
 import type {
   AnalysisRunsResponse,
   StoredAnalysisRun,
@@ -40,6 +44,19 @@ export async function GET(): Promise<Response> {
   }
   try {
     const store = new PostgresAnalysisStore(database);
+    const limits = await readAnalysisLimitState(
+      database,
+      evaluatorLimitConfigFromEnvironment(),
+      {
+        logicalWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        logicalProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        persistenceWorkspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+        persistenceProjectId: ANALYSIS_DEMO_SCOPE.projectId,
+        subjectDigest: provider.subjectDigest,
+        sourceVersionMode: "run-id",
+        sourceVersionIds: [],
+      },
+    );
     const runs = await store.listRuns({
       ...ANALYSIS_DEMO_SCOPE,
       requestedBySubjectDigest: provider.subjectDigest,
@@ -77,8 +94,20 @@ export async function GET(): Promise<Response> {
         };
       },
     ));
-    return json({ ok: true, runs: serialized });
-  } catch {
+    return json({ ok: true, runs: serialized, limits });
+  } catch (error) {
+    if (
+      error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "EVALUATOR_CONFIGURATION_INVALID"
+    ) {
+      return json({
+        ok: false,
+        code: "EVALUATOR_CONFIGURATION_INVALID",
+        message: "Evaluator limits are not safely configured.",
+      }, 503);
+    }
     return json({
       ok: false,
       code: "ANALYSIS_RUNS_READ_FAILED",

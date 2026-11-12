@@ -18,6 +18,10 @@ import type {
 import type {
   StoredSourceObjectRead,
 } from "@scopeledger/object-storage-adapter";
+import type {
+  AnalysisAdmissionDecision,
+  AnalysisLimitState,
+} from "../../../../lib/evaluator-limits.js";
 
 const MAX_SOURCE_CODE_POINTS = 200_000;
 const MAX_RUNS = 50;
@@ -250,6 +254,22 @@ export type ProviderSourceAnalysisDependencies = Readonly<{
     duplicate: boolean;
     review: AnalysisHumanReviewRecord;
   }>>;
+  readAnalysisLimits: (input: Readonly<{
+    subjectDigest: string;
+    workspaceId: string;
+    projectId: string;
+    sourceVersionIds: readonly string[];
+  }>) => Promise<AnalysisLimitState>;
+  admitAnalysis: <T>(
+    input: Readonly<{
+      subjectDigest: string;
+      workspaceId: string;
+      projectId: string;
+      sourceVersionIds: readonly string[];
+      mode: "manual" | "gemini";
+    }>,
+    work: (decision: AnalysisAdmissionDecision) => Promise<T>,
+  ) => Promise<T>;
   modelReference: () => string | null;
   newRunId?: () => string;
   now?: () => Date;
@@ -331,6 +351,7 @@ export type ProviderSourceAnalysisRun = Readonly<{
 export type ProviderSourceAnalysisProject = Readonly<{
   locator: string;
   displayName: string;
+  controls: AnalysisLimitState;
   requests: readonly Readonly<{
     locator: string;
     title: string;
@@ -400,6 +421,9 @@ type CatalogEntry = Readonly<{
   sourceVersionId: string;
   displayReference: string;
 }>;
+
+type ProviderSourceAnalysisCatalogProject =
+  Omit<ProviderSourceAnalysisProject, "controls">;
 
 type ExtractedAnalysis = Readonly<{
   source: ExtractedSourceLike;
@@ -524,12 +548,14 @@ function catalog(
   return Object.freeze(entries);
 }
 
-function projects(entries: readonly CatalogEntry[]): readonly ProviderSourceAnalysisProject[] {
+function projects(
+  entries: readonly CatalogEntry[],
+): readonly ProviderSourceAnalysisCatalogProject[] {
   const projectMap = new Map<string, {
     displayName: string;
     requests: Map<string, {
       title: string;
-      sources: ProviderSourceAnalysisProject["requests"][number]["sources"][number][];
+      sources: ProviderSourceAnalysisCatalogProject["requests"][number]["sources"][number][];
     }>;
   }>();
   for (const entry of entries) {
@@ -1286,6 +1312,34 @@ function modelFailure(error: unknown): Readonly<{
   return { status: 502, code: "MODEL_PROCESSING_FAILED" };
 }
 
+function evaluatorFailure(error: unknown): Response {
+  const code = error
+    && typeof error === "object"
+    && "code" in error
+    && typeof error.code === "string"
+    ? error.code
+    : null;
+  if (code === "ANALYSIS_RUN_LIMIT_REACHED") {
+    return json({
+      ok: false,
+      code,
+      message: "This provider subject has reached the analysis-run limit for the selected project.",
+    }, 429);
+  }
+  if (code === "EVALUATOR_CONFIGURATION_INVALID") {
+    return json({
+      ok: false,
+      code,
+      message: "Evaluator limits are not safely configured.",
+    }, 503);
+  }
+  return json({
+    ok: false,
+    code: "SOURCE_ANALYSIS_UNAVAILABLE",
+    message: "Protected provider source analysis is unavailable.",
+  }, 503);
+}
+
 function persistedDetails(
   selected: CatalogEntry,
   extracted: ExtractedAnalysis,
@@ -1333,7 +1387,15 @@ export async function handleProviderSourceAnalysisGet(
       access.subjectDigest,
       MAX_RUNS,
     );
-  } catch {
+  } catch (error) {
+    if (
+      error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "EVALUATOR_CONFIGURATION_INVALID"
+    ) {
+      return evaluatorFailure(error);
+    }
     return json({
       ok: false,
       code: "SOURCE_ANALYSIS_READ_FAILED",
@@ -1349,9 +1411,27 @@ export async function handleProviderSourceAnalysisGet(
       const entry = byVersion.get(run.run.sourceReference.versionId);
       return entry ? [analysisRun(access.subjectDigest, entry, run)] : [];
     });
+    const controlledProjects = await Promise.all(
+      projects(entries).map(async (project) => {
+        const projectEntries = entries.filter(
+          (entry) => entry.projectLocator === project.locator,
+        );
+        const first = projectEntries[0];
+        if (!first) throw new Error("SOURCE_ANALYSIS_PROJECT_EMPTY");
+        const controls = await dependencies.readAnalysisLimits({
+          subjectDigest: access.subjectDigest,
+          workspaceId: first.authorized.workspaceId,
+          projectId: first.authorized.projectId,
+          sourceVersionIds: projectEntries.map(
+            (entry) => entry.sourceVersionId,
+          ),
+        });
+        return Object.freeze({ ...project, controls });
+      }),
+    );
     return json({
       ok: true,
-      projects: projects(entries),
+      projects: controlledProjects,
       runs,
       limits: {
         sourceBytes: 10_000_000,
@@ -1359,7 +1439,15 @@ export async function handleProviderSourceAnalysisGet(
         pdfPages: 50,
       },
     } satisfies ProviderSourceAnalysisGetResponse);
-  } catch {
+  } catch (error) {
+    if (
+      error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "EVALUATOR_CONFIGURATION_INVALID"
+    ) {
+      return evaluatorFailure(error);
+    }
     return json({
       ok: false,
       code: "SOURCE_ANALYSIS_READ_FAILED",
@@ -1456,117 +1544,145 @@ export async function handleProviderSourceAnalysisPost(
     }, 503);
   }
   const sourceDetails = persistedDetails(selected, extracted);
-  if (validation.value.mode === "manual") {
-    let persistedRun: AnalysisRunRecord;
-    try {
-      persistedRun = await dependencies.persistRun(persistenceInput(
-        selected,
-        access.subjectDigest,
-        runId,
-        extracted,
-        {
-          status: "manual-review-ready",
-          providerReference: "manual",
-          modelReference: null,
-          candidatePayload: null,
-          failureDiagnostic: null,
-        },
-      ));
-    } catch {
-      return json({
-        ok: false,
-        code: "SOURCE_ANALYSIS_PERSISTENCE_FAILED",
-        message: "Exact extraction completed, but no durable analysis run was saved.",
-      }, 503);
-    }
-    return json({
-      ok: true,
-      code: "SOURCE_ANALYSIS_COMPLETE",
-      run: analysisRun(access.subjectDigest, selected, {
-        run: persistedRun,
-        source: sourceDetails,
-        reviews: [],
-      }),
-    } satisfies ProviderSourceAnalysisPostResponse);
-  }
-
+  const projectEntries = entries.filter((entry) =>
+    entry.authorized.workspaceId === selected.authorized.workspaceId
+    && entry.authorized.projectId === selected.authorized.projectId
+  );
   try {
-    const result = await dependencies.generateCandidates({
-      schemaVersion: 1,
-      workspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
-      projectId: ANALYSIS_DEMO_SCOPE.projectId,
-      sources: [extracted.source],
-      request: {
-        kind: "request",
-        text: "Review this exact admitted provider source for candidate scope interpretations.",
-      },
-    });
-    const configuredModel = result.model ?? dependencies.modelReference();
-    if (!configuredModel) {
-      throw Object.assign(new Error("MODEL_CONFIGURATION_UNAVAILABLE"), {
-        code: "INVALID_CONFIG",
-      });
-    }
-    const payload = candidatePayload(result);
-    const persistedRun = await dependencies.persistRun(persistenceInput(
-      selected,
-      access.subjectDigest,
-      runId,
-      extracted,
-      {
-        status: "candidate-ready",
-        providerReference: "google-gemini",
-        modelReference: configuredModel,
-        candidatePayload: payload,
-        failureDiagnostic: null,
-      },
-    ));
-    return json({
-      ok: true,
-      code: "SOURCE_ANALYSIS_COMPLETE",
-      run: analysisRun(access.subjectDigest, selected, {
-        run: persistedRun,
-        source: sourceDetails,
-        reviews: [],
-      }),
-    } satisfies ProviderSourceAnalysisPostResponse);
-  } catch (error) {
-    const failed = modelFailure(error);
-    let persistedRun: AnalysisRunRecord;
-    try {
-      persistedRun = await dependencies.persistRun(persistenceInput(
-        selected,
-        access.subjectDigest,
-        runId,
-        extracted,
-        {
-          status: "model-failed",
-          providerReference: "google-gemini",
-          modelReference: dependencies.modelReference(),
-          candidatePayload: null,
-          failureDiagnostic: {
-            code: failed.code,
-            message: modelFailureMessages[failed.code],
+    return await dependencies.admitAnalysis({
+      subjectDigest: access.subjectDigest,
+      workspaceId: selected.authorized.workspaceId,
+      projectId: selected.authorized.projectId,
+      sourceVersionIds: projectEntries.map((entry) => entry.sourceVersionId),
+      mode: validation.value.mode,
+    }, async (decision) => {
+      if (
+        validation.value.mode === "manual"
+        || !decision.modelDispatchAllowed
+      ) {
+        let persistedRun: AnalysisRunRecord;
+        try {
+          persistedRun = await dependencies.persistRun(persistenceInput(
+            selected,
+            access.subjectDigest,
+            runId,
+            extracted,
+            {
+              status: "manual-review-ready",
+              providerReference: "manual",
+              modelReference: null,
+              candidatePayload: null,
+              failureDiagnostic: null,
+            },
+          ));
+        } catch {
+          return json({
+            ok: false,
+            code: "SOURCE_ANALYSIS_PERSISTENCE_FAILED",
+            message: "Exact extraction completed, but no durable analysis run was saved.",
+          }, 503);
+        }
+        const run = analysisRun(access.subjectDigest, selected, {
+          run: persistedRun,
+          source: sourceDetails,
+          reviews: [],
+        });
+        if (!decision.modelDispatchAllowed) {
+          return json({
+            ok: false,
+            code: "MODEL_BUDGET_EXHAUSTED",
+            message: "Gemini dispatch is blocked by the configured model-call budget. The exact parser basis was saved for manual provider review.",
+            run,
+          } satisfies ProviderSourceAnalysisPostResponse, 429);
+        }
+        return json({
+          ok: true,
+          code: "SOURCE_ANALYSIS_COMPLETE",
+          run,
+        } satisfies ProviderSourceAnalysisPostResponse);
+      }
+
+      try {
+        const result = await dependencies.generateCandidates({
+          schemaVersion: 1,
+          workspaceId: ANALYSIS_DEMO_SCOPE.workspaceId,
+          projectId: ANALYSIS_DEMO_SCOPE.projectId,
+          sources: [extracted.source],
+          request: {
+            kind: "request",
+            text: "Review this exact admitted provider source for candidate scope interpretations.",
           },
-        },
-      ));
-    } catch {
-      return json({
-        ok: false,
-        code: "SOURCE_ANALYSIS_PERSISTENCE_FAILED",
-        message: "Exact extraction completed, but the failed model attempt was not saved.",
-      }, 503);
-    }
-    return json({
-      ok: false,
-      code: failed.code,
-      message: modelFailureMessages[failed.code],
-      run: analysisRun(access.subjectDigest, selected, {
-        run: persistedRun,
-        source: sourceDetails,
-        reviews: [],
-      }),
-    } satisfies ProviderSourceAnalysisPostResponse, failed.status);
+        });
+        const configuredModel = result.model ?? dependencies.modelReference();
+        if (!configuredModel) {
+          throw Object.assign(new Error("MODEL_CONFIGURATION_UNAVAILABLE"), {
+            code: "INVALID_CONFIG",
+          });
+        }
+        const payload = candidatePayload(result);
+        const persistedRun = await dependencies.persistRun(persistenceInput(
+          selected,
+          access.subjectDigest,
+          runId,
+          extracted,
+          {
+            status: "candidate-ready",
+            providerReference: "google-gemini",
+            modelReference: configuredModel,
+            candidatePayload: payload,
+            failureDiagnostic: null,
+          },
+        ));
+        return json({
+          ok: true,
+          code: "SOURCE_ANALYSIS_COMPLETE",
+          run: analysisRun(access.subjectDigest, selected, {
+            run: persistedRun,
+            source: sourceDetails,
+            reviews: [],
+          }),
+        } satisfies ProviderSourceAnalysisPostResponse);
+      } catch (error) {
+        const failed = modelFailure(error);
+        let persistedRun: AnalysisRunRecord;
+        try {
+          persistedRun = await dependencies.persistRun(persistenceInput(
+            selected,
+            access.subjectDigest,
+            runId,
+            extracted,
+            {
+              status: "model-failed",
+              providerReference: "google-gemini",
+              modelReference: dependencies.modelReference(),
+              candidatePayload: null,
+              failureDiagnostic: {
+                code: failed.code,
+                message: modelFailureMessages[failed.code],
+              },
+            },
+          ));
+        } catch {
+          return json({
+            ok: false,
+            code: "SOURCE_ANALYSIS_PERSISTENCE_FAILED",
+            message: "Exact extraction completed, but the failed model attempt was not saved.",
+          }, 503);
+        }
+        return json({
+          ok: false,
+          code: failed.code,
+          message: modelFailureMessages[failed.code],
+          run: analysisRun(access.subjectDigest, selected, {
+            run: persistedRun,
+            source: sourceDetails,
+            reviews: [],
+          }),
+        } satisfies ProviderSourceAnalysisPostResponse, failed.status);
+      }
+    });
+  } catch (error) {
+    return evaluatorFailure(error);
   }
 }
 

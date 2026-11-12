@@ -113,6 +113,7 @@ export type PayPalWebhookProcessingOutcome =
   | "resource-missing"
   | "invalid-receipt"
   | "unmatched-capture-operation"
+  | "credential-failure"
   | "provider-failure"
   | "authoritative-resource-invalid"
   | "domain-failure"
@@ -128,6 +129,7 @@ export type PayPalWebhookProcessingResult = Readonly<{
   exceptionState?: PaymentExceptionObservation["state"];
   duplicate?: boolean;
   holdActive?: boolean;
+  operationalFailure?: "credential" | "provider" | "authoritative";
 }>;
 
 export type PayPalWebhookProcessingBatch = Readonly<{
@@ -141,6 +143,17 @@ export type PayPalWebhookProcessingSummary = Readonly<{
     outcome: PayPalWebhookProcessingOutcome;
     count: number;
   }>[];
+}>;
+
+export type PayPalWebhookHealthSummary = Readonly<{
+  receipts: number;
+  processed: number;
+  unresolved: number;
+  credentialFailures: number;
+  providerFailures: number;
+  authoritativeFailures: number;
+  lastReceiptAt: string | null;
+  queueLagSeconds: number | null;
 }>;
 
 function boundedText(value: unknown, maximum: number): value is string {
@@ -275,6 +288,13 @@ function authoritativeMismatch(error: unknown): boolean {
     || code === "PROVIDER_RESPONSE_INVALID";
 }
 
+function providerFailure(error: unknown): PayPalWebhookProcessingOutcome {
+  const code = errorCode(error);
+  return code === "AUTHENTICATION_FAILED" || code === "INVALID_CONFIG"
+    ? "credential-failure"
+    : "provider-failure";
+}
+
 export class PayPalWebhookReceiptProcessor {
   constructor(
     private readonly receipts: PayPalWebhookReceiptSource,
@@ -301,8 +321,15 @@ export class PayPalWebhookReceiptProcessor {
     options: Readonly<{ limit?: number }> = {},
   ): Promise<PayPalWebhookProcessingBatch> {
     const receipts = await this.list(scope, options);
+    return this.processReceipts(scope, receipts);
+  }
+
+  async processReceipts(
+    scope: PayPalWebhookScope,
+    receipts: readonly StoredPayPalWebhookReceipt[],
+  ): Promise<PayPalWebhookProcessingBatch> {
     const results: PayPalWebhookProcessingResult[] = [];
-    for (const receipt of receipts) {
+    for (const receipt of [...receipts].sort(compareReceipts)) {
       try {
         results.push(await this.processReceipt(scope, receipt));
       } catch {
@@ -351,8 +378,8 @@ export class PayPalWebhookReceiptProcessor {
     let details: PayPalCaptureDetails;
     try {
       details = await this.provider.retrieveCaptureDetails(receipt.resourceId);
-    } catch {
-      return result(receipt, "provider-failure");
+    } catch (error) {
+      return result(receipt, providerFailure(error));
     }
 
     const domainScope = {
@@ -428,8 +455,8 @@ export class PayPalWebhookReceiptProcessor {
     let refund: PayPalRefundDetails;
     try {
       refund = await this.provider.retrieveRefundDetails(receipt.resourceId!);
-    } catch {
-      return result(receipt, "provider-failure");
+    } catch (error) {
+      return result(receipt, providerFailure(error));
     }
     const admission = await this.exceptionAdmission(
       scope,
@@ -576,7 +603,7 @@ export class PayPalWebhookReceiptProcessor {
     error: unknown,
   ): Promise<PayPalWebhookProcessingResult> {
     const state = authoritativeMismatch(error) ? "mismatch" : "unknown";
-    return this.recordException(scope, receipt, Object.freeze({
+    const recorded = await this.recordException(scope, receipt, Object.freeze({
       provider: "paypal",
       kind,
       state,
@@ -597,6 +624,14 @@ export class PayPalWebhookReceiptProcessor {
         verificationReference: receipt.verificationReference,
       },
     }));
+    return Object.freeze({
+      ...recorded,
+      operationalFailure: state === "mismatch"
+        ? "authoritative"
+        : providerFailure(error) === "credential-failure"
+          ? "credential"
+          : "provider",
+    });
   }
 
   private async recordException(
@@ -646,5 +681,55 @@ export function summarizePayPalWebhookProcessing(
         .sort(([left], [right]) => compareText(left, right))
         .map(([outcome, count]) => Object.freeze({ outcome, count })),
     ),
+  });
+}
+
+const unresolvedOutcomes = new Set<PayPalWebhookProcessingOutcome>([
+  "resource-missing",
+  "invalid-receipt",
+  "unmatched-capture-operation",
+  "credential-failure",
+  "provider-failure",
+  "authoritative-resource-invalid",
+  "domain-failure",
+  "processor-failure",
+]);
+
+export function summarizePayPalWebhookHealth(
+  batch: PayPalWebhookProcessingBatch,
+  receipts: readonly StoredPayPalWebhookReceipt[],
+  now: Date = new Date(),
+): PayPalWebhookHealthSummary {
+  const validReceivedTimes = receipts
+    .map((receipt) => receipt.receivedAt.getTime())
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  const oldest = validReceivedTimes[0];
+  const latest = validReceivedTimes[validReceivedTimes.length - 1];
+  const credentialFailures = batch.results.filter((processingResult) =>
+    processingResult.outcome === "credential-failure"
+    || processingResult.operationalFailure === "credential").length;
+  const providerFailures = batch.results.filter((processingResult) =>
+    processingResult.outcome === "provider-failure"
+    || processingResult.operationalFailure === "provider").length;
+  const authoritativeFailures = batch.results.filter((processingResult) =>
+    processingResult.outcome === "authoritative-resource-invalid"
+    || processingResult.operationalFailure === "authoritative").length;
+  const unresolved = batch.results.filter((processingResult) =>
+    unresolvedOutcomes.has(processingResult.outcome)
+    || processingResult.operationalFailure !== undefined).length;
+  return Object.freeze({
+    receipts: receipts.length,
+    processed: batch.results.length,
+    unresolved,
+    credentialFailures,
+    providerFailures,
+    authoritativeFailures,
+    lastReceiptAt: latest === undefined
+      ? null
+      : new Date(latest).toISOString(),
+    queueLagSeconds: oldest === undefined
+      ? null
+      : Math.max(0, Math.floor((now.getTime() - oldest) / 1_000)),
   });
 }

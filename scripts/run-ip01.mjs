@@ -185,7 +185,9 @@ export async function main() {
     "analysis-persistence",
     "correction-reissue",
     "custom-payment",
+    "evaluator-controls",
     "h1-authoring-foundation",
+    "notifications",
     "participant-lifecycle",
     "payment-exceptions",
     "publication-foundation",
@@ -199,7 +201,7 @@ export async function main() {
     || arguments_.some((argument) =>
       argument !== "--check-runtime" && argument !== suiteArgument)
   ) {
-    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|correction-reissue|custom-payment|h1-authoring-foundation|participant-lifecycle|payment-exceptions|publication-foundation|provider-participants|provider-reconciliation|provider-source-analysis|records-export.");
+    console.error("Unknown proof runner argument. Supported arguments are --check-runtime and --suite=ordered-consent|analysis-persistence|correction-reissue|custom-payment|evaluator-controls|h1-authoring-foundation|notifications|participant-lifecycle|payment-exceptions|publication-foundation|provider-participants|provider-reconciliation|provider-source-analysis|records-export.");
     process.exitCode = 1;
     return;
   }

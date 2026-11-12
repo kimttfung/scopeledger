@@ -7,10 +7,20 @@ import { providerSourceAnalysisDependencies } from "./runtime";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const unavailable = () => Response.json({
+const unavailable = (error?: unknown) => Response.json({
   ok: false,
-  code: "SOURCE_ANALYSIS_UNAVAILABLE",
-  message: "Protected provider source analysis is unavailable.",
+  code: error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "EVALUATOR_CONFIGURATION_INVALID"
+    ? "EVALUATOR_CONFIGURATION_INVALID"
+    : "SOURCE_ANALYSIS_UNAVAILABLE",
+  message: error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "EVALUATOR_CONFIGURATION_INVALID"
+    ? "Evaluator limits are not safely configured."
+    : "Protected provider source analysis is unavailable.",
 }, {
   status: 503,
   headers: {
@@ -24,8 +34,8 @@ export async function GET(): Promise<Response> {
     return await handleProviderSourceAnalysisGet(
       await providerSourceAnalysisDependencies(),
     );
-  } catch {
-    return unavailable();
+  } catch (error) {
+    return unavailable(error);
   }
 }
 
@@ -35,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
       request,
       await providerSourceAnalysisDependencies(),
     );
-  } catch {
-    return unavailable();
+  } catch (error) {
+    return unavailable(error);
   }
 }

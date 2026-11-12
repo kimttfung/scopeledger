@@ -22,6 +22,16 @@ import {
 
 const fixedTime = new Date("2026-11-12T07:15:00.000Z");
 const subjectDigest = "a".repeat(64);
+const sourceLimits = Object.freeze({
+  maximumCount: 5,
+  admittedCount: 0,
+  remainingCount: 5,
+  maximumBytes: 25_000_000,
+  admittedBytes: 0,
+  remainingBytes: 25_000_000,
+  windowMinutes: 60,
+  blocked: false,
+});
 const target: ProviderSourceTarget = {
   workspaceId: "demo-workspace",
   projectId: "cedar-roastery",
@@ -133,6 +143,11 @@ function dependencies(
     persistSourceIntake: async (input) => ({
       duplicate: false,
       source: intakeRecord(input),
+    }),
+    readSourceLimits: async () => sourceLimits,
+    admitSourceUpload: async (_input, work) => ({
+      value: await work(),
+      state: sourceLimits,
     }),
     now: () => new Date(fixedTime),
     ...overrides,

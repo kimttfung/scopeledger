@@ -35,7 +35,16 @@ function isAnalysisRunsResponse(value: unknown): value is AnalysisRunsResponse {
     && typeof value === "object"
     && "ok" in value
     && typeof value.ok === "boolean"
-    && (value.ok === false || ("runs" in value && Array.isArray(value.runs)));
+    && (
+      value.ok === false
+      || (
+        "runs" in value
+        && Array.isArray(value.runs)
+        && "limits" in value
+        && value.limits !== null
+        && typeof value.limits === "object"
+      )
+    );
 }
 
 function isAnalysisReviewResponse(
@@ -128,6 +137,9 @@ export default function AnalysisUpload() {
   const [clientError, setClientError] = useState("");
   const [response, setResponse] = useState<AnalysisResponse | null>(null);
   const [runs, setRuns] = useState<readonly StoredAnalysisRun[]>([]);
+  const [limits, setLimits] = useState<
+    Extract<AnalysisRunsResponse, { ok: true }>["limits"] | null
+  >(null);
   const [runsLoading, setRunsLoading] = useState(true);
   const [runsError, setRunsError] = useState("");
   const [selectedRunId, setSelectedRunId] = useState("");
@@ -164,6 +176,7 @@ export default function AnalysisUpload() {
       }
       setRunsError("");
       setRuns(payload.runs);
+      setLimits(payload.limits);
       setSelectedRunId((current) =>
         payload.runs.some((run) => run.runId === current)
           ? current
@@ -396,6 +409,24 @@ export default function AnalysisUpload() {
                 <strong>Separate processing choice:</strong> extraction does
                 not grant Gemini processing permission.
               </p>
+              {limits && (
+                <aside className="included-note" role="status">
+                  <div>
+                    <h2>
+                      {limits.blocked
+                        ? "Analysis admission limit reached"
+                        : `${limits.remainingRuns} of ${limits.maximumRuns} analysis runs remain`}
+                    </h2>
+                    <p>
+                      {limits.modelBlocked
+                        ? "Gemini dispatch is blocked by the configured budget. Parser/manual fallback remains available while an analysis slot remains."
+                        : `${limits.remainingModelCalls} Gemini dispatch${
+                          limits.remainingModelCalls === 1 ? "" : "es"
+                        } remain for this provider and project.`}
+                    </p>
+                  </div>
+                </aside>
+              )}
               <label className="optional-consent">
                 <input
                   checked={geminiPermitted}
@@ -418,11 +449,20 @@ export default function AnalysisUpload() {
               )}
               <button
                 className="button"
-                disabled={!file || !contentAttested || submitting}
+                disabled={
+                  !file
+                  || !contentAttested
+                  || submitting
+                  || limits?.blocked === true
+                }
                 type="submit"
               >
                 {submitting
                   ? "Extracting PDF…"
+                  : limits?.blocked
+                    ? "Analysis limit reached"
+                    : geminiPermitted && limits?.modelBlocked
+                      ? "Extract PDF and save manual fallback"
                   : geminiPermitted
                     ? "Extract PDF and prepare candidates"
                     : "Extract PDF for manual review"}

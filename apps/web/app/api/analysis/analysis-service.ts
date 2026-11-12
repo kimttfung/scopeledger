@@ -4,6 +4,7 @@ import {
 } from "@scopeledger/db";
 import type {
   AnalysisCandidatePayload,
+  AnalysisModelFailureCode,
   AnalysisRunInput,
   AnalysisSourceVersionInput,
 } from "@scopeledger/db";
@@ -121,6 +122,12 @@ export type AnalysisDependencies = Readonly<{
     source: AnalysisSourceVersionInput;
     run: AnalysisRunInput;
   }>) => Promise<void>;
+  admitAnalysis?: <T>(
+    input: Readonly<{ mode: "manual" | "gemini" }>,
+    work: (decision: Readonly<{
+      modelDispatchAllowed: boolean;
+    }>) => Promise<T>,
+  ) => Promise<T>;
   newRunId?: () => string;
   modelReference?: () => string | null;
   now?: () => Date;
@@ -569,8 +576,11 @@ export function parserFailure(error: unknown): AnalysisExecution {
 
 function failedModel(error: unknown): {
   status: number;
-  model: AnalysisModelSummary;
-  code: string;
+  model: Omit<
+    Extract<AnalysisModelSummary, { status: "failed" }>,
+    "code"
+  > & Readonly<{ code: AnalysisModelFailureCode }>;
+  code: AnalysisModelFailureCode;
   message: string;
 } {
   const code = errorCode(error);
@@ -660,8 +670,19 @@ export async function executeAnalysisUpload(
   }
   const parser = parserSummary(parsed, sealed.value);
   const exactTextDigest = sourceDigest(parsed.extractedText);
+  const admitAnalysis = dependencies.admitAnalysis
+    ?? (async <T>(
+      _input: Readonly<{ mode: "manual" | "gemini" }>,
+      work: (decision: Readonly<{
+        modelDispatchAllowed: boolean;
+      }>) => Promise<T>,
+    ): Promise<T> => work({ modelDispatchAllowed: true }));
 
-  if (!submission.geminiPermitted) {
+  try {
+    return await admitAnalysis({
+      mode: submission.geminiPermitted ? "gemini" : "manual",
+    }, async (admission) => {
+      if (!submission.geminiPermitted) {
     const model: AnalysisModelSummary = {
       status: "not-requested",
       humanReviewRequired: true,
@@ -711,7 +732,59 @@ export async function executeAnalysisUpload(
         manualFallback,
       },
     };
-  }
+      }
+
+      if (!admission.modelDispatchAllowed) {
+        const model: AnalysisModelSummary = {
+          status: "failed",
+          code: "MODEL_BUDGET_EXHAUSTED",
+          humanReviewRequired: true,
+          publicationBlocked: true,
+          candidates: [],
+          missingContext: [],
+        };
+        try {
+          await dependencies.persistRun(persistenceInput(
+            submission,
+            dependencies,
+            runId,
+            recordedAt,
+            parsed,
+            parser,
+            {
+              status: "manual-review-ready",
+              providerReference: "manual",
+              modelReference: null,
+              candidatePayload: null,
+              failureDiagnostic: null,
+            },
+          ));
+        } catch {
+          return failure(
+            503,
+            "ANALYSIS_PERSISTENCE_FAILED",
+            "Extraction completed, but the manual fallback could not be saved. Retry before relying on this result.",
+            { parser, model },
+          );
+        }
+        return failure(
+          429,
+          "MODEL_BUDGET_EXHAUSTED",
+          "Gemini dispatch is blocked by the configured model-call budget. The parser result was saved for manual provider review.",
+          {
+            parser,
+            model,
+            run: persistedRun(
+              runId,
+              recordedAt,
+              exactTextDigest,
+              "manual-review-ready",
+              "manual",
+              null,
+            ),
+          },
+        );
+      }
 
   try {
     const result = await dependencies.generateCandidates({
@@ -787,9 +860,7 @@ export async function executeAnalysisUpload(
           modelReference,
           candidatePayload: null,
           failureDiagnostic: {
-            code: modelFailure.model.status === "failed"
-              ? modelFailure.model.code
-              : "MODEL_PROCESSING_FAILED",
+            code: modelFailure.code,
             message: modelFailure.message,
           },
         },
@@ -818,6 +889,29 @@ export async function executeAnalysisUpload(
           modelReference,
         ),
       },
+    );
+      }
+    });
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === "ANALYSIS_RUN_LIMIT_REACHED") {
+      return failure(
+        429,
+        code,
+        "This provider subject has reached the analysis-run limit for this project.",
+      );
+    }
+    if (code === "EVALUATOR_CONFIGURATION_INVALID") {
+      return failure(
+        503,
+        code,
+        "Evaluator limits are not safely configured.",
+      );
+    }
+    return failure(
+      503,
+      "ANALYSIS_ADMISSION_UNAVAILABLE",
+      "Durable analysis admission is unavailable.",
     );
   }
 }

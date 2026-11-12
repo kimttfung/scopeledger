@@ -148,6 +148,29 @@
   font-size: 13px;
 }
 
+.limitState {
+  margin: 18px 0;
+  padding: 12px;
+  background: var(--color-tint);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+}
+
+.limitState strong,
+.limitState span {
+  display: block;
+}
+
+.limitState strong {
+  font-size: 13px;
+}
+
+.limitState span {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .selector fieldset {
   margin: 22px 0;
   padding: 0;
