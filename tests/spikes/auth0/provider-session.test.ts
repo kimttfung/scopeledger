@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MFA_ACR_VALUE,
+  MFA_CUSTOM_CLAIM,
   providerAssurance,
 } from "../../../apps/web/lib/provider-session.js";
 import {
@@ -33,6 +34,11 @@ test("provider assurance accepts standard MFA method or ACR claims", () => {
     sub: "auth0|provider",
     email_verified: true,
     acr: MFA_ACR_VALUE,
+  }).mfaVerified, true);
+  assert.equal(providerAssurance({
+    sub: "auth0|provider",
+    email_verified: true,
+    [MFA_CUSTOM_CLAIM]: true,
   }).mfaVerified, true);
 });
 

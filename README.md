@@ -189,6 +189,8 @@ Auth0 is the selected provider/staff identity boundary. It supplies OIDC login, 
 
 Without Auth0 configuration, `/provider` fails closed with an unavailable state while the synthetic client-review page remains usable. Once configured, provider access requires both verified email and an MFA method/ACR claim; authentication alone does not grant product permissions.
 
+If the tenant does not emit a standard `amr`/`acr` MFA claim, add a Post-Login Action that sets the namespaced ID-token claim `https://github.com/kimttfung/scopeledger/claims/mfa` from `event.authentication.methods`. ScopeLedger accepts that boolean claim only when Auth0 set it during the authenticated transaction.
+
 ```sh
 # Fill the Auth0 values in .env.local.
 npm run prepare:auth0-secret

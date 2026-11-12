@@ -1,5 +1,7 @@
 export const MFA_ACR_VALUE =
   "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
+export const MFA_CUSTOM_CLAIM =
+  "https://github.com/kimttfung/scopeledger/claims/mfa";
 
 type ProviderIdentity = {
   readonly sub: string;
@@ -7,6 +9,7 @@ type ProviderIdentity = {
   readonly email_verified?: boolean;
   readonly amr?: unknown;
   readonly acr?: unknown;
+  readonly [MFA_CUSTOM_CLAIM]?: unknown;
 };
 
 export type ProviderAssurance = Readonly<{
@@ -31,6 +34,7 @@ export function providerAssurance(
       || methods.includes("otp")
       || acr === MFA_ACR_VALUE
       || acr.toLowerCase().includes("multi-factor")
-      || acr.toLowerCase().includes("mfa"),
+      || acr.toLowerCase().includes("mfa")
+      || identity[MFA_CUSTOM_CLAIM] === true,
   });
 }
