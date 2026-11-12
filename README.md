@@ -191,6 +191,7 @@ Without Auth0 configuration, `/provider` fails closed with an unavailable state 
 
 ```sh
 # Fill the Auth0 values in .env.local.
+npm run prepare:auth0-secret
 npm run check:auth0-config
 npm run test:auth0:local
 ```
