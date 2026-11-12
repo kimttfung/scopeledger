@@ -116,6 +116,7 @@ Webhook capture reconciliation now re-fetches `/v2/payments/captures/{id}`, vali
 | `packages/domain` | Ordered consent, correction, and financial-intent commands. |
 | `packages/analysis` | Local extracted-source, Unicode-pointer, budget, and coverage validation only. |
 | `packages/adapters/gemini` | Permission-gated Gemini structured-output candidates with local exact-pointer validation. |
+| `packages/adapters/parser` | Bounded child-process PDF inspection/extraction and immutable source sealing. |
 | `packages/payment-worker` | Admitted PayPal dispatch sequencing and private approval-link handoff after domain observation. |
 
 Use the repository-pinned TypeScript 6.0.3. It supplies the JavaScript compiler API required by the existing ESLint stack; mixing the native TypeScript 7 package into that stack breaks linting.
@@ -152,6 +153,8 @@ This is the deterministic, local portion of IP-04: already-extracted immutable t
 
 Its local suite has **104 passing cases**. Validated pointers are not semantic, legal, pricing, or source-authenticity certification.
 
+`@scopeledger/parser-adapter` now inspects PDF signatures and extracts text in a separate bounded child process. It enforces 10 MB/50-page limits, returns complete Unicode page ranges, inherits no application secrets and seals output into the immutable source contract without granting model permission. The [parser acceptance manifest](tests/spikes/parser/acceptance.json) remains process-isolation evidence, not a hardened OS sandbox or OCR proof.
+
 ### Google Gemini analysis adapter
 
 Gemini is the selected model provider. `@scopeledger/gemini-adapter` checks the existing source-permission and admission gates before dispatch, sends no tools or financial capabilities, requests strict JSON-schema output and revalidates every exact Unicode source pointer locally. Model output remains human-review-required and publication-blocked.
@@ -169,7 +172,7 @@ The selected model is `gemini-3.5-flash-lite`. Never expose the auth key to the 
 
 An authenticated four-class synthetic scorecard now covers included work, genuine additions, missing-context correction and unresolved ambiguity. All four outputs passed strict local schema/evidence reconstruction and remained human-review-required and publication-blocked. The sanitized [partial acceptance manifest](tests/spikes/gemini/acceptance.json) is mechanical evidence only; human semantic scoring and repeat-run stability remain outstanding.
 
-**IP-04/SP-06 are not complete.** Actual file-type inspection, PDF extraction/parser isolation, authenticated Gemini calls, held-out quality measurements and approved data-processing terms remain unproved. No fabricated provider results are included. IP-03 likewise requires selected, authorized identity/email configurations before its actual experiments can run.
+**IP-04/SP-06 are not complete.** PDF signature inspection and bounded child-process text extraction now exist, and authenticated Gemini calls have mechanical scorecard evidence. Stronger parser egress isolation, hostile-PDF evaluation, image-only OCR, human semantic scoring, repeat-run variance and approved real-document processing terms remain unproved. No fabricated provider results are included.
 
 Package and spike documentation records the public implementation boundaries and observed evidence. Private product-planning records are intentionally excluded from the repository for now.
 

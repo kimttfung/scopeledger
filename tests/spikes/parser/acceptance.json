@@ -1,0 +1,38 @@
+{
+  "task": "IP-04-parser-partial",
+  "profile": "local-child-process-pdf-extraction",
+  "observedDate": "2026-11-12",
+  "parser": {
+    "library": "pdfjs-dist",
+    "version": "6.5.438",
+    "reference": "scopeledger.pdfjs.v1",
+    "heapLimitMb": 256,
+    "defaultTimeoutMs": 15000,
+    "maxPdfBytes": 10000000,
+    "maxPdfPages": 50
+  },
+  "result": {
+    "tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0
+  },
+  "evidence": [
+    "Valid two-page PDF text was extracted with contiguous Unicode page ranges",
+    "Application secrets were not inherited into parser output",
+    "Non-PDF, malformed, oversized and 51-page inputs failed explicitly",
+    "Temporary parser directories were removed after each run",
+    "Parsed output sealed into an immutable extracted-source record",
+    "Parser provenance replaced caller-supplied extractor text",
+    "Model permission remained unresolved and no model dispatch occurred"
+  ],
+  "notProved": [
+    "OS/container network egress denial",
+    "Malicious PDF corpus coverage",
+    "Image-only PDF OCR",
+    "Password-protected PDF support",
+    "Production parser dependency/security approval",
+    "Real private-document processing permission"
+  ],
+  "containsPrivateRecordsOrCredentials": false
+}
